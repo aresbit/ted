@@ -1,4 +1,41 @@
-# TED vs Kilo 对比分析
+# TED editor 
+🎮 操作指南
+Normal 模式（启动默认模式）
+i / a / A     - 进入 INSERT 模式（i=当前位置，a=后一个字符，A=行尾）
+:             - 进入命令模式
+/             - 搜索
+方向键        - 移动光标
+g / G         - 跳到文件开头/结尾
+x             - 删除字符
+d             - 删除行
+y             - 复制行（TODO: 剪贴板）
+q             - 退出（有修改会提示）
+Insert 模式
+Esc           - 返回 NORMAL 模式
+方向键        - 移动光标（是的，可以在 INSERT 模式移动！）
+Ctrl+S        - 保存
+Ctrl+Q        - 退出
+Ctrl+Z/Y      - 撤销/重做
+Ctrl+D        - 删除行
+Ctrl+F        - 搜索
+Ctrl+G        - 跳转到行
+Backspace     - 删除前一个字符
+Delete        - 删除当前字符
+Enter         - 换行
+命令模式
+:w            - 保存
+:w filename   - 另存为
+:q            - 退出
+:q!           - 强制退出（不保存）
+:wq           - 保存并退出
+:goto 10      - 跳到第10行
+:set nu       - 显示行号
+:set nonu     - 隐藏行号
+:syntax on    - 开启语法高亮
+:syntax off   - 关闭语法高亮
+:help         - 显示帮助
+
+## TED vs Kilo 对比分析
 
 ## 📊 基础数据对比
 
