@@ -129,7 +129,7 @@ void display_draw_rows(void) {
         if (file_row < E.buffer.line_count) {
             // Draw line number
             if (E.config.show_line_numbers) {
-                sp_str_t num = sp_format("{:>4} ", SP_FMT_U32(file_row + 1));
+                sp_str_t num = sp_format("{:pad 4} ", SP_FMT_U32(file_row + 1));
                 sp_io_write_cstr(&stdout_writer, "\033[90m"); // Gray
                 sp_io_write_str(&stdout_writer, num);
                 sp_io_write_cstr(&stdout_writer, COLOR_RESET);
@@ -177,7 +177,7 @@ void display_draw_rows(void) {
                     }
                 } else if (c >= 32 && c < 127) {
                     sp_io_writer_t c_writer = sp_io_writer_from_fd(STDOUT_FILENO, SP_IO_CLOSE_MODE_NONE);
-                    sp_io_write_u8(&c_writer, (u8)c);
+                    sp_io_write(&c_writer, &c, 1);
                 } else {
                     sp_io_write_cstr(&stdout_writer, ".");
                 }
