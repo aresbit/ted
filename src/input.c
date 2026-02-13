@@ -1,31 +1,50 @@
 /**
  * input.c - Input handling and key processing
+ * FIXED VERSION
  */
 
 #include "ted.h"
 #include <termios.h>
 #include <unistd.h>
+#include <sys/select.h>
+
+// Check if input is available without blocking
+static bool input_available(void) {
+    struct timeval tv = {0, 0};  // No wait
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    return select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0;
+}
 
 c8 input_read_key(void) {
     c8 c = 0;
     ssize_t nread;
 
+    // Wait for input
+    while (!input_available()) {
+        usleep(10000); // Sleep 10ms to avoid busy waiting
+    }
+
     // Read one character
-    while ((nread = read(STDIN_FILENO, &c, 1)) == -1) {
-        if (errno != EAGAIN && errno != EINTR) {
-            die("read");
-        }
+    nread = read(STDIN_FILENO, &c, 1);
+    if (nread != 1) {
+        return 0;
     }
 
     // Handle escape sequences
     if (c == '\033') {
+        // Check if there's more input (escape sequence)
+        if (!input_available()) {
+            return '\033'; // Just ESC key
+        }
+
         c8 seq[3];
-
-        // Try to read the rest of the sequence
         if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\033';
-        if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\033';
-
+        
         if (seq[0] == '[') {
+            if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\033';
+            
             switch (seq[1]) {
                 case 'A': return 0x1000; // Up
                 case 'B': return 0x1001; // Down
@@ -33,25 +52,49 @@ c8 input_read_key(void) {
                 case 'D': return 0x1003; // Left
                 case 'H': return 0x1004; // Home
                 case 'F': return 0x1005; // End
-                case '3': // Delete key
-                    if (read(STDIN_FILENO, &seq[2], 1) == 1 && seq[2] == '~') {
-                        return 0x1006; // Delete
+                case '1': // Home (alternate)
+                    if (input_available()) {
+                        c8 end;
+                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
+                            return 0x1004;
+                        }
                     }
                     break;
-                case '5': // Ctrl+Home/Page Up
-                    if (read(STDIN_FILENO, &seq[2], 1) == 1 && seq[2] == '~') {
-                        return 0x1007; // Page Up
+                case '3': // Delete
+                    if (input_available()) {
+                        c8 end;
+                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
+                            return 0x1006;
+                        }
                     }
-                    return '5'; // Ctrl+Home
-                case '6': // Ctrl+End/Page Down
-                    if (read(STDIN_FILENO, &seq[2], 1) == 1 && seq[2] == '~') {
-                        return 0x1008; // Page Down
+                    break;
+                case '4': // End (alternate)
+                    if (input_available()) {
+                        c8 end;
+                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
+                            return 0x1005;
+                        }
                     }
-                    return '6'; // Ctrl+End
+                    break;
+                case '5': // Page Up
+                    if (input_available()) {
+                        c8 end;
+                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
+                            return 0x1007;
+                        }
+                    }
+                    break;
+                case '6': // Page Down
+                    if (input_available()) {
+                        c8 end;
+                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
+                            return 0x1008;
+                        }
+                    }
+                    break;
             }
         }
 
-        // Not a recognized escape sequence, return Esc
         return '\033';
     }
 
@@ -67,14 +110,22 @@ void input_handle_normal(c8 c) {
         case 0x1003: // Left
         case 0x1004: // Home
         case 0x1005: // End
-        case '5':    // Ctrl+Home
-        case '6':    // Ctrl+End
             editor_move_cursor(c);
             break;
 
         // Mode switching
         case 'i':
+        case 'a':
             E.mode = MODE_INSERT;
+            if (c == 'a' && E.cursor.col < E.buffer.lines[E.cursor.row].text.len) {
+                E.cursor.col++;
+            }
+            editor_set_message("-- INSERT --");
+            break;
+
+        case 'A': // Insert at end of line
+            E.mode = MODE_INSERT;
+            E.cursor.col = E.buffer.lines[E.cursor.row].text.len;
             editor_set_message("-- INSERT --");
             break;
 
@@ -106,18 +157,22 @@ void input_handle_normal(c8 c) {
             break;
 
         case 'G':
-            E.cursor.row = E.buffer.line_count - 1;
+            if (E.buffer.line_count > 0) {
+                E.cursor.row = E.buffer.line_count - 1;
+            }
             E.cursor.col = 0;
             break;
 
         // Page scroll
         case ' ':
         case 0x1008: // Page Down
-            E.row_offset += E.screen_rows;
-            if (E.row_offset > E.buffer.line_count) {
-                E.row_offset = E.buffer.line_count > 0 ? E.buffer.line_count - 1 : 0;
+            if (E.buffer.line_count > 0) {
+                E.row_offset += E.screen_rows;
+                if (E.row_offset >= E.buffer.line_count) {
+                    E.row_offset = E.buffer.line_count - 1;
+                }
+                E.cursor.row = E.row_offset;
             }
-            E.cursor.row = E.row_offset;
             break;
 
         case 0x1007: // Page Up
@@ -137,12 +192,19 @@ void input_handle_normal(c8 c) {
             break;
 
         case 'd':
-            editor_delete_line(E.cursor.row);
+            if (E.buffer.line_count > 1) {
+                editor_delete_line(E.cursor.row);
+            }
             break;
 
         // Copy line
         case 'y':
             editor_copy_line();
+            break;
+
+        // Quit (in normal mode, allow q)
+        case 'q':
+            editor_quit();
             break;
     }
 }
@@ -153,9 +215,9 @@ void input_handle_insert(c8 c) {
         case '\033':
             E.mode = MODE_NORMAL;
             editor_set_message("");
-            if (E.cursor.col > 0) {
+            if (E.cursor.col > 0 && 
+                E.cursor.col == E.buffer.lines[E.cursor.row].text.len) {
                 E.cursor.col--;
-                E.cursor.render_col = buffer_row_to_render(&E.buffer, E.cursor.row, E.cursor.col);
             }
             break;
 
@@ -194,12 +256,43 @@ void input_handle_insert(c8 c) {
 
         // Ctrl+D - delete line
         case 4: // Ctrl+D
-            editor_delete_line(E.cursor.row);
+            if (E.buffer.line_count > 1) {
+                editor_delete_line(E.cursor.row);
+            }
             break;
 
         // Ctrl+L - redraw
         case 12: // Ctrl+L
             display_clear();
+            break;
+
+        // Arrow keys in insert mode
+        case 0x1000: // Up
+        case 0x1001: // Down
+        case 0x1002: // Right
+        case 0x1003: // Left
+        case 0x1004: // Home
+        case 0x1005: // End
+            editor_move_cursor(c);
+            break;
+
+        // Delete key
+        case 0x1006:
+            if (E.cursor.col < E.buffer.lines[E.cursor.row].text.len) {
+                buffer_delete_char_at(&E.buffer, E.cursor.row, E.cursor.col);
+            } else if (E.cursor.row + 1 < E.buffer.line_count) {
+                // Join with next line
+                sp_str_t current = E.buffer.lines[E.cursor.row].text;
+                sp_str_t next = E.buffer.lines[E.cursor.row + 1].text;
+                
+                sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
+                sp_str_builder_t builder = sp_str_builder_from_writer(&writer);
+                sp_str_builder_append(&builder, current);
+                sp_str_builder_append(&builder, next);
+                E.buffer.lines[E.cursor.row].text = sp_str_builder_to_str(&builder);
+                
+                buffer_delete_line(&E.buffer, E.cursor.row + 1);
+            }
             break;
 
         // Enter - new line

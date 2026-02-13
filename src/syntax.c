@@ -1,5 +1,6 @@
 /**
  * syntax.c - Syntax highlighting for TED editor
+ * FIXED VERSION
  */
 
 #include "ted.h"
@@ -21,7 +22,7 @@ static const c8 *c_keywords[] = {
     "typeid", "decltype", "constexpr", "noexcept", "static_assert",
     "alignas", "alignof", "char8_t", "char16_t", "char32_t", "concept",
     "co_await", "co_return", "co_yield", "consteval", "constinit",
-    "export", "import", "module", "requires", NULL
+    "export", "import", "module", "requires", "include", "define", NULL
 };
 
 // Python keywords
@@ -48,13 +49,15 @@ static const c8 *js_keywords[] = {
 static const c8 *sh_keywords[] = {
     "if", "then", "else", "elif", "fi", "case", "esac", "for", "select",
     "while", "until", "do", "done", "in", "function", "time", "{", "}",
-    "!", "[[", "]]", NULL
+    "!", "[[", "]]", "echo", "cd", "ls", "cat", "grep", "awk", "sed", NULL
 };
 
 // Type keywords (highlighted differently)
 static const c8 *c_types[] = {
     "int", "char", "bool", "float", "double", "void", "long", "short",
-    "signed", "unsigned", "size_t", "ssize_t", "off_t", "time_t", NULL
+    "signed", "unsigned", "size_t", "ssize_t", "off_t", "time_t",
+    "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+    "int8_t", "int16_t", "int32_t", "int64_t", NULL
 };
 
 typedef struct {
@@ -119,22 +122,12 @@ static bool is_keyword(const c8 **keywords, sp_str_t word) {
     if (!keywords) return false;
     for (u32 i = 0; keywords[i]; i++) {
         u32 kw_len = (u32)strlen(keywords[i]);
-        if (word.len == kw_len && strncmp(word.data, keywords[i], kw_len)) {
+        // FIXED: was != 0, should be == 0
+        if (word.len == kw_len && strncmp(word.data, keywords[i], kw_len) == 0) {
             return true;
         }
     }
     return false;
-}
-
-static bool is_separator(c8 c) {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
-           c == '(' || c == ')' || c == '[' || c == ']' ||
-           c == '{' || c == '}' || c == ';' || c == ',' ||
-           c == '.' || c == '+' || c == '-' || c == '*' ||
-           c == '/' || c == '%' || c == '&' || c == '|' ||
-           c == '=' || c == '<' || c == '>' || c == '!' ||
-           c == '~' || c == '^' || c == ':' || c == '"' ||
-           c == '\'' || c == '#'; // Added '#' as separator for Python comments
 }
 
 void syntax_init(void) {
@@ -149,6 +142,7 @@ language_t* syntax_detect_language(sp_str_t filename) {
             ext = sp_str_sub(filename, i, (s32)(filename.len - i));
             break;
         }
+        if (filename.data[i] == '/') break; // Stop at directory separator
     }
 
     // Map extension to language
@@ -159,7 +153,7 @@ language_t* syntax_detect_language(sp_str_t filename) {
         sp_str_equal(ext, sp_str_lit(".cc")) ||
         sp_str_equal(ext, sp_str_lit(".cxx"))) {
         static language_t c_lang = {
-            .name = SP_LIT("c"),
+            .name = SP_LIT("C"),
             .extensions = SP_LIT(".c .h .cpp .hpp"),
             .keywords = NULL,
             .keyword_count = 0,
@@ -173,7 +167,7 @@ language_t* syntax_detect_language(sp_str_t filename) {
 
     if (sp_str_equal(ext, sp_str_lit(".py"))) {
         static language_t py_lang = {
-            .name = SP_LIT("python"),
+            .name = SP_LIT("Python"),
             .extensions = SP_LIT(".py"),
             .keywords = NULL,
             .keyword_count = 0,
@@ -188,7 +182,7 @@ language_t* syntax_detect_language(sp_str_t filename) {
     if (sp_str_equal(ext, sp_str_lit(".js")) ||
         sp_str_equal(ext, sp_str_lit(".mjs"))) {
         static language_t js_lang = {
-            .name = SP_LIT("javascript"),
+            .name = SP_LIT("JS"),
             .extensions = SP_LIT(".js .mjs"),
             .keywords = NULL,
             .keyword_count = 0,
@@ -204,7 +198,7 @@ language_t* syntax_detect_language(sp_str_t filename) {
         sp_str_equal(ext, sp_str_lit(".bash")) ||
         sp_str_equal(ext, sp_str_lit(".zsh"))) {
         static language_t sh_lang = {
-            .name = SP_LIT("shell"),
+            .name = SP_LIT("Shell"),
             .extensions = SP_LIT(".sh .bash .zsh"),
             .keywords = NULL,
             .keyword_count = 0,
@@ -218,7 +212,7 @@ language_t* syntax_detect_language(sp_str_t filename) {
 
     if (sp_str_equal(ext, sp_str_lit(".md"))) {
         static language_t md_lang = {
-            .name = SP_LIT("markdown"),
+            .name = SP_LIT("Markdown"),
             .extensions = SP_LIT(".md"),
             .keywords = NULL,
             .keyword_count = 0,
@@ -231,7 +225,7 @@ language_t* syntax_detect_language(sp_str_t filename) {
     }
 
     static language_t text_lang = {
-        .name = SP_LIT("text"),
+        .name = SP_LIT("Text"),
         .extensions = SP_LIT(""),
         .keywords = NULL,
         .keyword_count = 0,
@@ -246,16 +240,31 @@ language_t* syntax_detect_language(sp_str_t filename) {
 void syntax_highlight_line(line_t *line, language_t *lang) {
     if (!line || !lang) return;
 
-    // Allocate highlight array
+    // Free old highlight
     if (line->hl) {
         sp_free(line->hl);
     }
+    
+    // Return early for empty lines
+    if (line->text.len == 0) {
+        line->hl = NULL;
+        return;
+    }
+
+    // Allocate highlight array
     line->hl = sp_alloc(sizeof(highlight_type_t) * line->text.len);
+    
+    // Initialize all to normal
+    for (u32 i = 0; i < line->text.len; i++) {
+        line->hl[i] = HL_NORMAL;
+    }
 
     // Find matching syntax definition
     syntax_def_t *def = &syntax_defs[4]; // Default to text
     for (u32 i = 0; i < sizeof(syntax_defs) / sizeof(syntax_defs[0]); i++) {
-        if (sp_str_equal(syntax_defs[i].name, lang->name)) {
+        if (sp_str_equal(syntax_defs[i].name, lang->name) || 
+            (lang->name.len > 0 && syntax_defs[i].name.len > 0 &&
+             tolower(lang->name.data[0]) == tolower(syntax_defs[i].name.data[0]))) {
             def = &syntax_defs[i];
             break;
         }
@@ -364,7 +373,7 @@ void syntax_highlight_line(line_t *line, language_t *lang) {
                     line->hl[i] = HL_NUMBER;
                 } else {
                     state = STATE_NORMAL;
-                    line->hl[i] = HL_NORMAL;
+                    i--; // Re-process this character in normal state
                 }
                 break;
             }

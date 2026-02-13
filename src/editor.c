@@ -1,5 +1,6 @@
 /**
  * editor.c - Core editor logic
+ * FIXED VERSION
  */
 
 #include "ted.h"
@@ -21,6 +22,7 @@ void editor_init(void) {
     buffer_init(&E.buffer);
     undo_init(&E.undo);
     undo_init(&E.redo);
+    search_init();
 
     // Default configuration
     E.config.show_line_numbers = true;
@@ -30,11 +32,12 @@ void editor_init(void) {
     E.config.tab_width = TAB_WIDTH_DEFAULT;
 
     E.mode = MODE_NORMAL;
+    E.has_selection = false;
 
-    // Initialize display
+    // Initialize display (this sets up raw mode)
     display_init();
 
-    editor_set_message("TED v" TED_VERSION " - Press Ctrl+Q to quit, i to insert");
+    editor_set_message("TED v" TED_VERSION " - Press i to insert, :q to quit");
 }
 
 void editor_open(sp_str_t filename) {
@@ -43,25 +46,27 @@ void editor_open(sp_str_t filename) {
     E.row_offset = 0;
     E.col_offset = 0;
 
-    editor_set_message("Opened '{}' - {} lines",
-        SP_FMT_STR(filename),
-        SP_FMT_U32(E.buffer.line_count));
+    editor_set_message("Opened - %u lines", E.buffer.line_count);
 }
 
 void editor_save(void) {
     if (E.buffer.filename.len == 0 || sp_str_equal(E.buffer.filename, sp_str_lit("[No Name]"))) {
         E.mode = MODE_COMMAND;
         E.command_buffer = sp_str_lit("w ");
+        editor_set_message("Enter filename:");
         return;
     }
 
     buffer_save_file(&E.buffer);
+    editor_set_message("Saved %u lines", E.buffer.line_count);
 }
 
+static s32 force_quit_count = 0;
+
 void editor_quit(void) {
-    if (E.buffer.modified) {
-        editor_set_message("Unsaved changes! Press Ctrl+Q again to force quit.");
-        // In a real implementation, track force quit state
+    if (E.buffer.modified && force_quit_count == 0) {
+        editor_set_message("Unsaved changes! Press Ctrl+Q again or :q! to force quit.");
+        force_quit_count = 1;
         return;
     }
 
@@ -73,23 +78,33 @@ void editor_move_cursor(u32 key) {
     cursor_t *c = &E.cursor;
     buffer_t *buf = &E.buffer;
 
+    // Ensure buffer has at least one line
+    if (buf->line_count == 0) {
+        c->row = 0;
+        c->col = 0;
+        c->render_col = 0;
+        return;
+    }
+
+    // Clamp current position
+    if (c->row >= buf->line_count) {
+        c->row = buf->line_count - 1;
+    }
+
     switch (key) {
-        case 'A': // Up
-        case 0x1000: // Arrow up
+        case 0x1000: // Up
             if (c->row > 0) {
                 c->row--;
             }
             break;
 
-        case 'B': // Down
-        case 0x1001: // Arrow down
+        case 0x1001: // Down
             if (c->row + 1 < buf->line_count) {
                 c->row++;
             }
             break;
 
-        case 'C': // Right
-        case 0x1002: // Arrow right
+        case 0x1002: // Right
             if (c->col < buf->lines[c->row].text.len) {
                 c->col++;
             } else if (c->row + 1 < buf->line_count) {
@@ -99,8 +114,7 @@ void editor_move_cursor(u32 key) {
             }
             break;
 
-        case 'D': // Left
-        case 0x1003: // Arrow left
+        case 0x1003: // Left
             if (c->col > 0) {
                 c->col--;
             } else if (c->row > 0) {
@@ -110,21 +124,11 @@ void editor_move_cursor(u32 key) {
             }
             break;
 
-        case 'H': // Home
+        case 0x1004: // Home
             c->col = 0;
             break;
 
-        case 'F': // End
-            c->col = buf->lines[c->row].text.len;
-            break;
-
-        case '5': // Ctrl+Home - go to start of file
-            c->row = 0;
-            c->col = 0;
-            break;
-
-        case '6': // Ctrl+End - go to end of file
-            c->row = buf->line_count - 1;
+        case 0x1005: // End
             c->col = buf->lines[c->row].text.len;
             break;
     }
@@ -137,22 +141,27 @@ void editor_move_cursor(u32 key) {
     // Update render column
     c->render_col = buffer_row_to_render(buf, c->row, c->col);
 
-    // Adjust scroll offset
+    // Adjust scroll offset - vertical
     if (c->row < E.row_offset) {
         E.row_offset = c->row;
     } else if (c->row >= E.row_offset + E.screen_rows) {
         E.row_offset = c->row - E.screen_rows + 1;
     }
 
+    // Adjust scroll offset - horizontal
+    u32 gutter = E.config.show_line_numbers ? 6 : 0;
+    u32 visible_cols = E.screen_cols - gutter;
+    
     if (c->render_col < E.col_offset) {
         E.col_offset = c->render_col;
-    } else if (c->render_col >= E.col_offset + E.screen_cols - 6) {
-        E.col_offset = c->render_col - E.screen_cols + 7;
+    } else if (c->render_col >= E.col_offset + visible_cols) {
+        E.col_offset = c->render_col - visible_cols + 1;
     }
 }
 
 void editor_insert_char(c8 c) {
     if (E.mode != MODE_INSERT) return;
+    if (E.cursor.row >= E.buffer.line_count) return;
 
     // Record for undo
     undo_record_insert(E.cursor.row, E.cursor.col, c);
@@ -160,10 +169,14 @@ void editor_insert_char(c8 c) {
     buffer_insert_char_at(&E.buffer, E.cursor.row, E.cursor.col, c);
     E.cursor.col++;
     E.cursor.render_col = buffer_row_to_render(&E.buffer, E.cursor.row, E.cursor.col);
+    
+    // Reset force quit counter on edit
+    force_quit_count = 0;
 }
 
 void editor_insert_newline(void) {
     if (E.mode != MODE_INSERT) return;
+    if (E.cursor.row >= E.buffer.line_count) return;
 
     sp_str_t current_line = buffer_get_line(&E.buffer, E.cursor.row);
     sp_str_t new_line_text;
@@ -175,6 +188,7 @@ void editor_insert_newline(void) {
         // Truncate current line
         sp_str_t truncated = sp_str_sub(current_line, 0, (s32)E.cursor.col);
         E.buffer.lines[E.cursor.row].text = truncated;
+        E.buffer.lines[E.cursor.row].hl_dirty = true;
     } else {
         new_line_text = sp_str_lit("");
     }
@@ -187,6 +201,13 @@ void editor_insert_newline(void) {
     E.cursor.row++;
     E.cursor.col = 0;
     E.cursor.render_col = 0;
+    
+    // Adjust scroll if needed
+    if (E.cursor.row >= E.row_offset + E.screen_rows) {
+        E.row_offset = E.cursor.row - E.screen_rows + 1;
+    }
+    
+    force_quit_count = 0;
 }
 
 void editor_delete_char(void) {
@@ -194,6 +215,8 @@ void editor_delete_char(void) {
 
     buffer_t *buf = &E.buffer;
     cursor_t *c = &E.cursor;
+
+    if (c->row >= buf->line_count) return;
 
     if (c->col > 0) {
         // Delete char before cursor
@@ -216,6 +239,7 @@ void editor_delete_char(void) {
         sp_str_builder_append(&builder, buf->lines[c->row - 1].text);
         sp_str_builder_append(&builder, current);
         buf->lines[c->row - 1].text = sp_str_builder_to_str(&builder);
+        buf->lines[c->row - 1].hl_dirty = true;
 
         // Delete current line
         buffer_delete_line(buf, c->row);
@@ -224,10 +248,20 @@ void editor_delete_char(void) {
     }
 
     c->render_col = buffer_row_to_render(buf, c->row, c->col);
+    force_quit_count = 0;
 }
 
 void editor_delete_line(u32 row) {
     if (row >= E.buffer.line_count) return;
+    if (E.buffer.line_count <= 1) {
+        // Don't delete last line, just clear it
+        E.buffer.lines[0].text = sp_str_lit("");
+        E.buffer.lines[0].hl_dirty = true;
+        E.buffer.modified = true;
+        E.cursor.col = 0;
+        E.cursor.render_col = 0;
+        return;
+    }
 
     // Record for undo
     sp_str_t line_text = E.buffer.lines[row].text;
@@ -237,11 +271,13 @@ void editor_delete_line(u32 row) {
 
     // Adjust cursor if needed
     if (E.cursor.row >= E.buffer.line_count) {
-        E.cursor.row = E.buffer.line_count > 0 ? E.buffer.line_count - 1 : 0;
+        E.cursor.row = E.buffer.line_count - 1;
     }
     if (E.cursor.col > E.buffer.lines[E.cursor.row].text.len) {
         E.cursor.col = E.buffer.lines[E.cursor.row].text.len;
     }
+    
+    force_quit_count = 0;
 }
 
 void editor_copy_line(void) {
@@ -249,22 +285,34 @@ void editor_copy_line(void) {
 
     // Copy line to clipboard would go here
     // For now, just set a message
-    editor_set_message("Line copied (clipboard support coming soon)");
+    editor_set_message("Line copied (clipboard support TODO)");
 }
 
 void editor_goto_line(u32 line) {
     if (line == 0) line = 1;
     if (line > E.buffer.line_count) line = E.buffer.line_count;
+    if (E.buffer.line_count == 0) return;
 
     E.cursor.row = line - 1;
     E.cursor.col = 0;
     E.cursor.render_col = 0;
 
-    // Adjust scroll
-    if (E.cursor.row < E.row_offset) {
-        E.row_offset = E.cursor.row;
-    } else if (E.cursor.row >= E.row_offset + E.screen_rows) {
-        E.row_offset = E.cursor.row - E.screen_rows / 2;
+    // Center the line on screen if possible
+    if (E.screen_rows > 0) {
+        if (E.cursor.row >= E.screen_rows / 2) {
+            E.row_offset = E.cursor.row - E.screen_rows / 2;
+        } else {
+            E.row_offset = 0;
+        }
+    }
+    
+    // Make sure we don't scroll past the end
+    if (E.row_offset + E.screen_rows > E.buffer.line_count) {
+        if (E.buffer.line_count > E.screen_rows) {
+            E.row_offset = E.buffer.line_count - E.screen_rows;
+        } else {
+            E.row_offset = 0;
+        }
     }
 }
 
