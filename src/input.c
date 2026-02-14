@@ -113,6 +113,20 @@ void input_handle_normal(int c) {
             editor_move_cursor(c);
             break;
 
+        // Vim-style navigation
+        case 'h':
+            editor_move_cursor(0x1003); // Left
+            break;
+        case 'j':
+            editor_move_cursor(0x1001); // Down
+            break;
+        case 'k':
+            editor_move_cursor(0x1000); // Up
+            break;
+        case 'l':
+            editor_move_cursor(0x1002); // Right
+            break;
+
         // Mode switching
         case 'i':
         case 'a':
