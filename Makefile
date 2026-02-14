@@ -6,6 +6,7 @@ export TMPDIR := $(CURDIR)/tmp
 
 # Project Configuration
 NAME := ted
+DIGITAL_RAIN_NAME := digital_rain
 VERSION := 0.1.0
 
 # Directories
@@ -14,8 +15,10 @@ BUILD_DIR := build
 BIN_DIR := bin
 
 # Source files
-SRCS := $(wildcard $(SRC_DIR)/*.c)
+SRCS := $(filter-out src/digital_rain_main.c, $(wildcard $(SRC_DIR)/*.c))
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
+DIGITAL_RAIN_SRCS := src/digital_rain.c src/digital_rain_main.c
+DIGITAL_RAIN_OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(DIGITAL_RAIN_SRCS))
 
 # Compiler Configuration
 CC := gcc
@@ -52,6 +55,7 @@ $(BIN_DIR)/$(NAME): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "Built: $@"
 
+
 # Compile source files
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c include/sp.h | dir
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -68,7 +72,7 @@ clean:
 # Format code with clang-format
 format:
 	@which clang-format > /dev/null 2>&1 && \
-		clang-format -i $(SRCS) $(SRC_DIR)/*.h || \
+		clang-format -i $(SRCS) $(SRC_DIR)/*.h include/digital_rain.h || \
 		echo "clang-format not installed"
 
 # Install to /data/data/com.termux/files/usr/bin (Termux)
