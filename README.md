@@ -1,5 +1,7 @@
 # TED editor 
-🎮 操作指南
+
+## 🎮 操作指南
+```bash
 Normal 模式（启动默认模式）
 i / a / A     - 进入 INSERT 模式（i=当前位置，a=后一个字符，A=行尾）
 :             - 进入命令模式
@@ -34,6 +36,7 @@ Enter         - 换行
 :syntax on    - 开启语法高亮
 :syntax off   - 关闭语法高亮
 :help         - 显示帮助
+```
 
 ## TED vs Kilo 对比分析
 
