@@ -4,6 +4,7 @@
  */
 
 #include "ted.h"
+#include <stdio.h>
 #include <stdarg.h>
 
 void editor_set_message(const c8 *fmt, ...) {
@@ -317,7 +318,7 @@ void editor_goto_line(u32 line) {
 }
 
 void editor_process_keypress(void) {
-    c8 c = input_read_key();
+    int c = input_read_key();
 
     if (c == 0) return;
 

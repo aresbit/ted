@@ -219,12 +219,12 @@ void undo_perform(void);
 void redo_perform(void);
 
 // input.c
-c8 input_read_key(void);
+int input_read_key(void);
 bool input_read_escape_sequence(c8 *seq, u32 *len);
 void input_process(c8 c);
-void input_handle_normal(c8 c);
-void input_handle_insert(c8 c);
-void input_handle_command(c8 c);
-void input_handle_search(c8 c);
+void input_handle_normal(int c);
+void input_handle_insert(int c);
+void input_handle_command(int c);
+void input_handle_search(int c);
 
 #endif // TED_H

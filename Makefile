@@ -18,7 +18,7 @@ SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
 
 # Compiler Configuration
-CC := clang
+CC := gcc
 CFLAGS := -std=gnu17 -Wall -Wextra -pedantic -O2 -D_GNU_SOURCE
 CFLAGS += -Iinclude -fPIC -DSP_PS_DISABLE
 

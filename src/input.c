@@ -17,8 +17,8 @@ static bool input_available(void) {
     return select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0;
 }
 
-c8 input_read_key(void) {
-    c8 c = 0;
+int input_read_key(void) {
+    int c = 0;
     ssize_t nread;
 
     // Wait for input
@@ -101,7 +101,7 @@ c8 input_read_key(void) {
     return c;
 }
 
-void input_handle_normal(c8 c) {
+void input_handle_normal(int c) {
     switch (c) {
         // Navigation
         case 0x1000: // Up
@@ -209,7 +209,7 @@ void input_handle_normal(c8 c) {
     }
 }
 
-void input_handle_insert(c8 c) {
+void input_handle_insert(int c) {
     switch (c) {
         // Escape - return to normal mode
         case '\033':
@@ -327,7 +327,7 @@ static sp_str_t truncate_string(sp_str_t str) {
     return sp_str_sub(str, 0, (s32)str.len - 1);
 }
 
-void input_handle_command(c8 c) {
+void input_handle_command(int c) {
     switch (c) {
         case '\033': // Escape - cancel
             E.mode = MODE_NORMAL;
@@ -364,7 +364,7 @@ void input_handle_command(c8 c) {
     }
 }
 
-void input_handle_search(c8 c) {
+void input_handle_search(int c) {
     switch (c) {
         case '\033': // Escape - cancel
             E.mode = MODE_NORMAL;
