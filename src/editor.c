@@ -62,15 +62,11 @@ void editor_save(void) {
     editor_set_message("Saved %u lines", E.buffer.line_count);
 }
 
-static s32 force_quit_count = 0;
-
 void editor_quit(void) {
-    if (E.buffer.modified && force_quit_count == 0) {
-        editor_set_message("Unsaved changes! Press Ctrl+Q again or :q! to force quit.");
-        force_quit_count = 1;
-        return;
+    if (E.buffer.modified) {
+        editor_set_message("Warning: Unsaved changes will be lost. Use :w to save.");
+        display_refresh();
     }
-
     display_clear();
     exit(0);
 }
@@ -170,9 +166,6 @@ void editor_insert_char(c8 c) {
     buffer_insert_char_at(&E.buffer, E.cursor.row, E.cursor.col, c);
     E.cursor.col++;
     E.cursor.render_col = buffer_row_to_render(&E.buffer, E.cursor.row, E.cursor.col);
-    
-    // Reset force quit counter on edit
-    force_quit_count = 0;
 }
 
 void editor_insert_newline(void) {
@@ -207,8 +200,6 @@ void editor_insert_newline(void) {
     if (E.cursor.row >= E.row_offset + E.screen_rows) {
         E.row_offset = E.cursor.row - E.screen_rows + 1;
     }
-    
-    force_quit_count = 0;
 }
 
 void editor_delete_char(void) {
@@ -249,7 +240,6 @@ void editor_delete_char(void) {
     }
 
     c->render_col = buffer_row_to_render(buf, c->row, c->col);
-    force_quit_count = 0;
 }
 
 void editor_delete_line(u32 row) {
@@ -277,8 +267,6 @@ void editor_delete_line(u32 row) {
     if (E.cursor.col > E.buffer.lines[E.cursor.row].text.len) {
         E.cursor.col = E.buffer.lines[E.cursor.row].text.len;
     }
-    
-    force_quit_count = 0;
 }
 
 void editor_copy_line(void) {

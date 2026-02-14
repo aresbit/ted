@@ -216,8 +216,9 @@ void input_handle_normal(int c) {
             editor_copy_line();
             break;
 
-        // Quit (in normal mode, allow q)
+        // Quit (in normal mode, allow q/Q)
         case 'q':
+        case 'Q':
             editor_quit();
             break;
     }
@@ -383,20 +384,24 @@ void input_handle_search(int c) {
         case '\033': // Escape - cancel
             E.mode = MODE_NORMAL;
             E.command_buffer = sp_str_lit("");
-            E.search.query = sp_str_lit("");
-            editor_set_message("Search cancelled");
+            editor_set_message("Search mode exited");
             break;
 
         case '\r': // Enter - execute search
         case '\n':
             if (E.mode == MODE_SEARCH) {
-                search_update_query(E.command_buffer);
+                // Only update query if it changed
+                if (!sp_str_equal(E.command_buffer, E.search.query)) {
+                    search_update_query(E.command_buffer);
+                }
                 search_next();
+                // Stay in search mode to allow pressing Enter again for next match
+                // User can press Esc to exit search mode
             } else if (E.mode == MODE_REPLACE) {
                 search_replace_current(E.command_buffer);
+                E.mode = MODE_NORMAL;
+                E.command_buffer = sp_str_lit("");
             }
-            E.mode = MODE_NORMAL;
-            E.command_buffer = sp_str_lit("");
             break;
 
         case 127: // Backspace
