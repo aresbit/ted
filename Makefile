@@ -1,4 +1,4 @@
-# TED - Termux Editor Makefile
+# TED - Terminal Editor Makefile
 # Modern C Makefile based on gnaro project template
 
 # Termux compatibility: avoid /tmp permissions
@@ -41,6 +41,20 @@ ifeq ($(UNAME_S),Linux)
     LDFLAGS += -lpthread
 endif
 
+# Install prefix detection
+# Override with: make install PREFIX=/your/custom/path
+# Termux: check for Termux environment
+ifneq ($(TERMUX_VERSION),)
+    PREFIX := /data/data/com.termux/files/usr
+else
+    # Standard Unix paths
+    PREFIX := /usr/local
+    # If no write permission to /usr/local, use user's home
+    ifeq ($(shell test -w $(PREFIX)/bin 2>/dev/null && echo yes || echo no),no)
+        PREFIX := $(HOME)/.local
+    endif
+endif
+
 # Default target
 .PHONY: all clean debug format install uninstall
 
@@ -50,7 +64,7 @@ all: dir $(BIN_DIR)/$(NAME)
 dir:
 	@mkdir -p $(BUILD_DIR) $(BIN_DIR)
 
-# Link executable
+# Link main executable
 $(BIN_DIR)/$(NAME): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "Built: $@"
@@ -75,15 +89,16 @@ format:
 		clang-format -i $(SRCS) $(SRC_DIR)/*.h include/digital_rain.h || \
 		echo "clang-format not installed"
 
-# Install to /data/data/com.termux/files/usr/bin (Termux)
+# Install binary to PREFIX/bin
 install: all
-	@install -d /data/data/com.termux/files/usr/bin
-	@install -m 755 $(BIN_DIR)/$(NAME) /data/data/com.termux/files/usr/bin/
-	@echo "Installed to /data/data/com.termux/files/usr/bin/$(NAME)"
+	@install -d $(PREFIX)/bin
+	@install -m 755 $(BIN_DIR)/$(NAME) $(PREFIX)/bin/
+	@echo "Installed to $(PREFIX)/bin/$(NAME)"
+	@echo "Make sure $(PREFIX)/bin is in your PATH"
 
 # Uninstall
 uninstall:
-	@rm -f /data/data/com.termux/files/usr/bin/$(NAME)
+	@rm -f $(PREFIX)/bin/$(NAME)
 	@echo "Uninstalled $(NAME)"
 
 # Development helpers
@@ -98,3 +113,4 @@ info:
 	@echo "Objects: $(OBJS)"
 	@echo "Compiler: $(CC)"
 	@echo "CFLAGS: $(CFLAGS)"
+	@echo "Install prefix: $(PREFIX)"
