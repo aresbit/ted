@@ -94,17 +94,17 @@ int input_read_key(void) {
             // Map command to key code
             switch (cmd) {
                 case 'A': // Up
-                    return has_modifier && modifier == 2 ? KEY_SHIFT_UP : KEY_UP;
+                    return has_modifier && (modifier == 2 || modifier == 3) ? KEY_SHIFT_UP : KEY_UP;
                 case 'B': // Down
-                    return has_modifier && modifier == 2 ? KEY_SHIFT_DOWN : KEY_DOWN;
+                    return has_modifier && (modifier == 2 || modifier == 3) ? KEY_SHIFT_DOWN : KEY_DOWN;
                 case 'C': // Right
-                    return has_modifier && modifier == 2 ? KEY_SHIFT_RIGHT : KEY_RIGHT;
+                    return has_modifier && (modifier == 2 || modifier == 3) ? KEY_SHIFT_RIGHT : KEY_RIGHT;
                 case 'D': // Left
-                    return has_modifier && modifier == 2 ? KEY_SHIFT_LEFT : KEY_LEFT;
+                    return has_modifier && (modifier == 2 || modifier == 3) ? KEY_SHIFT_LEFT : KEY_LEFT;
                 case 'H': // Home
-                    return has_modifier && modifier == 2 ? KEY_SHIFT_HOME : KEY_HOME;
+                    return has_modifier && (modifier == 2 || modifier == 3) ? KEY_SHIFT_HOME : KEY_HOME;
                 case 'F': // End
-                    return has_modifier && modifier == 2 ? KEY_SHIFT_END : KEY_END;
+                    return has_modifier && (modifier == 2 || modifier == 3) ? KEY_SHIFT_END : KEY_END;
                 case '~': // Special keys with numeric prefix
                     if (seq_len >= 2) {
                         switch (seq[0]) {
