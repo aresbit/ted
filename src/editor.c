@@ -153,11 +153,14 @@ void editor_move_cursor(u32 key) {
     // Adjust scroll offset - horizontal
     u32 gutter = E.config.show_line_numbers ? 5 : 0;
     u32 visible_cols = E.screen_cols - gutter;
-    
+
     if (c->render_col < E.col_offset) {
         E.col_offset = c->render_col;
-    } else if (c->render_col >= E.col_offset + visible_cols) {
-        E.col_offset = c->render_col - visible_cols + 1;
+    } else if (c->render_col >= E.col_offset + visible_cols - 1) {
+        // Scroll when cursor is at or beyond the rightmost visible column
+        E.col_offset = c->render_col - visible_cols + 2;
+        // Ensure col_offset doesn't go negative (though unsigned)
+        if (E.col_offset > c->render_col) E.col_offset = 0;
     }
 }
 
