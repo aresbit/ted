@@ -17,6 +17,10 @@ void editor_set_message(const c8 *fmt, ...) {
     E.message = sp_str_from_cstr(buf);
 }
 
+// Forward declarations for static functions
+static sp_str_t editor_get_selection(void);
+static sp_str_t editor_delete_selection(void);
+
 void editor_init(void) {
     sp_memset(&E, 0, sizeof(E));
 
@@ -24,6 +28,7 @@ void editor_init(void) {
     undo_init(&E.undo);
     undo_init(&E.redo);
     search_init();
+    E.clipboard = sp_str_lit("");
 
     // Default configuration
     E.config.show_line_numbers = true;
@@ -89,19 +94,19 @@ void editor_move_cursor(u32 key) {
     }
 
     switch (key) {
-        case 0x1000: // Up
+        case KEY_UP: // Up
             if (c->row > 0) {
                 c->row--;
             }
             break;
 
-        case 0x1001: // Down
+        case KEY_DOWN: // Down
             if (c->row + 1 < buf->line_count) {
                 c->row++;
             }
             break;
 
-        case 0x1002: // Right
+        case KEY_RIGHT: // Right
             if (c->col < buf->lines[c->row].text.len) {
                 c->col++;
             } else if (c->row + 1 < buf->line_count) {
@@ -111,7 +116,7 @@ void editor_move_cursor(u32 key) {
             }
             break;
 
-        case 0x1003: // Left
+        case KEY_LEFT: // Left
             if (c->col > 0) {
                 c->col--;
             } else if (c->row > 0) {
@@ -121,11 +126,11 @@ void editor_move_cursor(u32 key) {
             }
             break;
 
-        case 0x1004: // Home
+        case KEY_HOME: // Home
             c->col = 0;
             break;
 
-        case 0x1005: // End
+        case KEY_END: // End
             c->col = buf->lines[c->row].text.len;
             break;
     }
@@ -146,7 +151,7 @@ void editor_move_cursor(u32 key) {
     }
 
     // Adjust scroll offset - horizontal
-    u32 gutter = E.config.show_line_numbers ? 6 : 0;
+    u32 gutter = E.config.show_line_numbers ? 5 : 0;
     u32 visible_cols = E.screen_cols - gutter;
     
     if (c->render_col < E.col_offset) {
@@ -160,6 +165,11 @@ void editor_insert_char(c8 c) {
     if (E.mode != MODE_INSERT) return;
     if (E.cursor.row >= E.buffer.line_count) return;
 
+    // Clear selection if any
+    if (E.has_selection) {
+        editor_delete_selection();
+    }
+
     // Record for undo
     undo_record_insert(E.cursor.row, E.cursor.col, c);
 
@@ -171,6 +181,11 @@ void editor_insert_char(c8 c) {
 void editor_insert_newline(void) {
     if (E.mode != MODE_INSERT) return;
     if (E.cursor.row >= E.buffer.line_count) return;
+
+    // If there's a selection, delete it first
+    if (E.has_selection) {
+        editor_delete_selection();
+    }
 
     sp_str_t current_line = buffer_get_line(&E.buffer, E.cursor.row);
     sp_str_t new_line_text;
@@ -209,6 +224,12 @@ void editor_delete_char(void) {
     cursor_t *c = &E.cursor;
 
     if (c->row >= buf->line_count) return;
+
+    // If there's a selection, delete it
+    if (E.has_selection) {
+        editor_delete_selection();
+        return;
+    }
 
     if (c->col > 0) {
         // Delete char before cursor
@@ -261,20 +282,319 @@ void editor_delete_line(u32 row) {
     buffer_delete_line(&E.buffer, row);
 
     // Adjust cursor if needed
-    if (E.cursor.row >= E.buffer.line_count) {
-        E.cursor.row = E.buffer.line_count - 1;
-    }
-    if (E.cursor.col > E.buffer.lines[E.cursor.row].text.len) {
-        E.cursor.col = E.buffer.lines[E.cursor.row].text.len;
+    if (E.buffer.line_count == 0) {
+        E.cursor.row = 0;
+        E.cursor.col = 0;
+    } else {
+        if (E.cursor.row >= E.buffer.line_count) {
+            E.cursor.row = E.buffer.line_count - 1;
+        }
+        if (E.cursor.col > E.buffer.lines[E.cursor.row].text.len) {
+            E.cursor.col = E.buffer.lines[E.cursor.row].text.len;
+        }
     }
 }
 
-void editor_copy_line(void) {
-    if (E.cursor.row >= E.buffer.line_count) return;
+// Get text from current selection
+static sp_str_t editor_get_selection(void) {
+    if (!E.has_selection) return sp_str_lit("");
 
-    // Copy line to clipboard would go here
-    // For now, just set a message
-    editor_set_message("Line copied (clipboard support TODO)");
+    u32 start_row = E.select_start.row;
+    u32 start_col = E.select_start.col;
+    u32 end_row = E.cursor.row;
+    u32 end_col = E.cursor.col;
+
+    // Normalize selection (ensure start <= end)
+    if (start_row > end_row || (start_row == end_row && start_col > end_col)) {
+        u32 tmp = start_row; start_row = end_row; end_row = tmp;
+        tmp = start_col; start_col = end_col; end_col = tmp;
+    }
+
+    sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
+    sp_str_builder_t builder = sp_str_builder_from_writer(&writer);
+
+    for (u32 row = start_row; row <= end_row && row < E.buffer.line_count; row++) {
+        sp_str_t line = E.buffer.lines[row].text;
+        u32 line_len = line.len;
+
+        if (row == start_row && row == end_row) {
+            // Single line selection
+            u32 len = end_col > line_len ? line_len : end_col;
+            if (len > start_col) {
+                sp_str_t sub = sp_str_sub(line, (s32)start_col, (s32)(len - start_col));
+                sp_str_builder_append(&builder, sub);
+            }
+        } else if (row == start_row) {
+            // First line of multi-line selection
+            if (start_col < line_len) {
+                sp_str_t sub = sp_str_sub(line, (s32)start_col, (s32)(line_len - start_col));
+                sp_str_builder_append(&builder, sub);
+            }
+            sp_str_builder_append_c8(&builder, '\n');
+        } else if (row == end_row) {
+            // Last line of multi-line selection
+            u32 len = end_col > line_len ? line_len : end_col;
+            if (len > 0) {
+                sp_str_t sub = sp_str_sub(line, 0, (s32)len);
+                sp_str_builder_append(&builder, sub);
+            }
+        } else {
+            // Middle line - take whole line
+            sp_str_builder_append(&builder, line);
+            sp_str_builder_append_c8(&builder, '\n');
+        }
+    }
+
+    return sp_str_builder_to_str(&builder);
+}
+
+// Delete the current selection and return the deleted text
+static sp_str_t editor_delete_selection(void) {
+    if (!E.has_selection) return sp_str_lit("");
+
+    u32 start_row = E.select_start.row;
+    u32 start_col = E.select_start.col;
+    u32 end_row = E.cursor.row;
+    u32 end_col = E.cursor.col;
+
+    // Normalize selection
+    if (start_row > end_row || (start_row == end_row && start_col > end_col)) {
+        u32 tmp = start_row; start_row = end_row; end_row = tmp;
+        tmp = start_col; start_col = end_col; end_col = tmp;
+    }
+
+    sp_str_t deleted = editor_get_selection();
+
+    if (start_row == end_row) {
+        // Single line - just delete characters
+        sp_str_t line = E.buffer.lines[start_row].text;
+        sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
+        sp_str_builder_t builder = sp_str_builder_from_writer(&writer);
+
+        // Part before selection
+        if (start_col > 0) {
+            sp_str_t before = sp_str_sub(line, 0, (s32)start_col);
+            sp_str_builder_append(&builder, before);
+        }
+        // Part after selection
+        u32 line_len = line.len;
+        if (end_col < line_len) {
+            sp_str_t after = sp_str_sub(line, (s32)end_col, (s32)(line_len - end_col));
+            sp_str_builder_append(&builder, after);
+        }
+
+        E.buffer.lines[start_row].text = sp_str_builder_to_str(&builder);
+        E.buffer.lines[start_row].hl_dirty = true;
+        E.buffer.modified = true;
+
+        // Move cursor to start of selection
+        E.cursor.row = start_row;
+        E.cursor.col = start_col;
+    } else {
+        // Multi-line selection
+        sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
+        sp_str_builder_t builder = sp_str_builder_from_writer(&writer);
+
+        // Keep part of first line before selection
+        sp_str_t first_line = E.buffer.lines[start_row].text;
+        if (start_col > 0 && start_col <= first_line.len) {
+            sp_str_t before = sp_str_sub(first_line, 0, (s32)start_col);
+            sp_str_builder_append(&builder, before);
+        }
+
+        // Append part of last line after selection
+        sp_str_t last_line = E.buffer.lines[end_row].text;
+        u32 last_len = last_line.len;
+        if (end_col < last_len) {
+            sp_str_t after = sp_str_sub(last_line, (s32)end_col, (s32)(last_len - end_col));
+            sp_str_builder_append(&builder, after);
+        }
+
+        // Replace first line with combined content
+        E.buffer.lines[start_row].text = sp_str_builder_to_str(&builder);
+        E.buffer.lines[start_row].hl_dirty = true;
+
+        // Delete lines between start and end (inclusive of end)
+        for (u32 i = end_row; i > start_row; i--) {
+            buffer_delete_line(&E.buffer, i);
+        }
+
+        E.buffer.modified = true;
+
+        // Move cursor to start of selection
+        E.cursor.row = start_row;
+        E.cursor.col = start_col;
+    }
+
+    E.cursor.render_col = buffer_row_to_render(&E.buffer, E.cursor.row, E.cursor.col);
+    E.has_selection = false;
+    return deleted;
+}
+
+void editor_copy_line(void) {
+    if (E.has_selection) {
+        // Copy selection
+        E.clipboard = editor_get_selection();
+        E.has_selection = false;
+        editor_set_message("Selection copied");
+    } else if (E.cursor.row < E.buffer.line_count) {
+        // Copy entire line
+        E.clipboard = sp_str_copy(E.buffer.lines[E.cursor.row].text);
+        editor_set_message("Line copied to clipboard");
+    }
+}
+
+void editor_cut_line(void) {
+    if (E.has_selection) {
+        // Cut selection
+        E.clipboard = editor_delete_selection();
+        editor_set_message("Selection cut");
+    } else if (E.cursor.row < E.buffer.line_count) {
+        // Cut entire line
+        E.clipboard = sp_str_copy(E.buffer.lines[E.cursor.row].text);
+        editor_delete_line(E.cursor.row);
+        editor_set_message("Line cut to clipboard");
+    }
+}
+
+void editor_paste(void) {
+    if (E.clipboard.len == 0) {
+        editor_set_message("Clipboard is empty");
+        return;
+    }
+
+    // Ensure cursor is within valid range
+    if (E.buffer.line_count == 0) {
+        buffer_insert_line(&E.buffer, 0, sp_str_lit(""));
+    }
+    if (E.cursor.row >= E.buffer.line_count) {
+        E.cursor.row = E.buffer.line_count - 1;
+    }
+
+    // If there's a selection, delete it first
+    if (E.has_selection) {
+        editor_delete_selection();
+    }
+
+    // Check if clipboard contains newlines
+    bool has_newlines = false;
+    for (u32 i = 0; i < E.clipboard.len; i++) {
+        if (E.clipboard.data[i] == '\n') {
+            has_newlines = true;
+            break;
+        }
+    }
+
+    if (has_newlines) {
+        // Multi-line paste: split clipboard and insert lines
+        u32 start_row = E.cursor.row;
+        u32 start_col = E.cursor.col;
+
+        sp_str_t current_line = E.buffer.lines[start_row].text;
+
+        // Split current line at cursor
+        sp_str_t before_cursor = sp_str_lit("");
+        sp_str_t after_cursor = sp_str_lit("");
+
+        if (start_col > 0 && start_col <= current_line.len) {
+            before_cursor = sp_str_sub(current_line, 0, (s32)start_col);
+        }
+        if (start_col < current_line.len) {
+            after_cursor = sp_str_sub(current_line, (s32)start_col, (s32)(current_line.len - start_col));
+        }
+
+        // Parse clipboard and insert lines
+        u32 line_start = 0;
+        u32 inserted_count = 0;
+        u32 last_line_len = 0;
+
+        for (u32 i = 0; i <= E.clipboard.len; i++) {
+            if (i == E.clipboard.len || E.clipboard.data[i] == '\n') {
+                u32 line_len = i - line_start;
+                sp_str_t line_text = sp_str_sub(E.clipboard, (s32)line_start, (s32)line_len);
+
+                if (inserted_count == 0) {
+                    // First line: prepend before_cursor
+                    sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
+                    sp_str_builder_t builder = sp_str_builder_from_writer(&writer);
+                    sp_str_builder_append(&builder, before_cursor);
+                    sp_str_builder_append(&builder, line_text);
+                    sp_str_t combined = sp_str_builder_to_str(&builder);
+
+                    undo_record_delete_line(start_row, E.buffer.lines[start_row].text);
+                    E.buffer.lines[start_row].text = combined;
+                    E.buffer.lines[start_row].hl_dirty = true;
+                    last_line_len = combined.len;
+                } else {
+                    // Subsequent lines
+                    u32 insert_at = start_row + inserted_count;
+                    sp_str_t text_to_insert = line_text;
+
+                    if (i == E.clipboard.len || (i == E.clipboard.len - 1 && E.clipboard.data[i] == '\n')) {
+                        // Last line: append after_cursor
+                        sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
+                        sp_str_builder_t builder = sp_str_builder_from_writer(&writer);
+                        sp_str_builder_append(&builder, line_text);
+                        sp_str_builder_append(&builder, after_cursor);
+                        text_to_insert = sp_str_builder_to_str(&builder);
+                    }
+
+                    undo_record_insert_line(insert_at, text_to_insert);
+                    buffer_insert_line(&E.buffer, insert_at, text_to_insert);
+                    last_line_len = text_to_insert.len;
+                }
+
+                line_start = i + 1;
+                inserted_count++;
+            }
+        }
+
+        E.buffer.modified = true;
+
+        // Move cursor to end of pasted content
+        if (inserted_count == 1) {
+            E.cursor.col = last_line_len;
+        } else {
+            E.cursor.row = start_row + inserted_count - 1;
+            E.cursor.col = last_line_len;
+        }
+    } else {
+        // Single-line paste: insert at cursor position
+        u32 row = E.cursor.row;
+        u32 col = E.cursor.col;
+
+        sp_str_t line = E.buffer.lines[row].text;
+        sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
+        sp_str_builder_t builder = sp_str_builder_from_writer(&writer);
+
+        // Part before cursor
+        if (col > 0 && col <= line.len) {
+            sp_str_t before = sp_str_sub(line, 0, (s32)col);
+            sp_str_builder_append(&builder, before);
+        }
+
+        // Pasted text
+        sp_str_builder_append(&builder, E.clipboard);
+
+        // Part after cursor
+        if (col < line.len) {
+            sp_str_t after = sp_str_sub(line, (s32)col, (s32)(line.len - col));
+            sp_str_builder_append(&builder, after);
+        }
+
+        undo_record_delete_line(row, E.buffer.lines[row].text);
+        E.buffer.lines[row].text = sp_str_builder_to_str(&builder);
+        E.buffer.lines[row].hl_dirty = true;
+        E.buffer.modified = true;
+
+        // Move cursor to end of pasted text
+        E.cursor.col = col + E.clipboard.len;
+    }
+
+    E.cursor.render_col = buffer_row_to_render(&E.buffer, E.cursor.row, E.cursor.col);
+    E.has_selection = false;
+
+    editor_set_message("Pasted from clipboard");
 }
 
 void editor_goto_line(u32 line) {

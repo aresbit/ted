@@ -25,9 +25,10 @@ static void print_usage(const c8 *prog) {
     sp_io_write_cstr(&stderr_writer, "  Ctrl+Z  Undo\n");
     sp_io_write_cstr(&stderr_writer, "  Ctrl+Y  Redo\n");
     sp_io_write_cstr(&stderr_writer, "  Ctrl+D  Delete line\n");
-    sp_io_write_cstr(&stderr_writer, "  Ctrl+C  Copy (or copy line if no selection)\n");
-    sp_io_write_cstr(&stderr_writer, "  Ctrl+X  Cut (or cut line if no selection)\n");
+    sp_io_write_cstr(&stderr_writer, "  Ctrl+C  Copy selection (or copy line)\n");
+    sp_io_write_cstr(&stderr_writer, "  Ctrl+X  Cut selection (or cut line)\n");
     sp_io_write_cstr(&stderr_writer, "  Ctrl+V  Paste\n");
+    sp_io_write_cstr(&stderr_writer, "  Mouse   Click to move cursor, drag to select\n");
     sp_io_write_cstr(&stderr_writer, "  Ctrl+L  Clear screen/redraw\n");
     sp_io_write_cstr(&stderr_writer, "  Esc     Switch to normal mode\n");
     sp_io_write_cstr(&stderr_writer, "  i       Enter insert mode (in normal mode)\n");

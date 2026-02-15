@@ -239,10 +239,12 @@ language_t* syntax_detect_language(sp_str_t filename) {
 
 void syntax_highlight_line(line_t *line, language_t *lang) {
     if (!line || !lang) return;
+    if (!line->text.data && line->text.len > 0) return;
 
     // Free old highlight
     if (line->hl) {
         sp_free(line->hl);
+        line->hl = NULL;
     }
     
     // Return early for empty lines
@@ -253,7 +255,10 @@ void syntax_highlight_line(line_t *line, language_t *lang) {
 
     // Allocate highlight array
     line->hl = sp_alloc(sizeof(highlight_type_t) * line->text.len);
-    
+    if (!line->hl) {
+        return; // Allocation failed
+    }
+
     // Initialize all to normal
     for (u32 i = 0; i < line->text.len; i++) {
         line->hl[i] = HL_NORMAL;
@@ -262,8 +267,9 @@ void syntax_highlight_line(line_t *line, language_t *lang) {
     // Find matching syntax definition
     syntax_def_t *def = &syntax_defs[4]; // Default to text
     for (u32 i = 0; i < sizeof(syntax_defs) / sizeof(syntax_defs[0]); i++) {
-        if (sp_str_equal(syntax_defs[i].name, lang->name) || 
+        if (sp_str_equal(syntax_defs[i].name, lang->name) ||
             (lang->name.len > 0 && syntax_defs[i].name.len > 0 &&
+             lang->name.data && syntax_defs[i].name.data &&
              tolower(lang->name.data[0]) == tolower(syntax_defs[i].name.data[0]))) {
             def = &syntax_defs[i];
             break;
@@ -297,7 +303,7 @@ void syntax_highlight_line(line_t *line, language_t *lang) {
                 // Check for single-line comment
                 if (def->single_comment && c == def->single_comment[0]) {
                     u32 clen = (u32)strlen(def->single_comment);
-                    if (i + clen <= line->text.len) {
+                    if (clen > 0 && i + clen <= line->text.len) {
                         bool match = true;
                         for (u32 j = 0; j < clen; j++) {
                             if (line->text.data[i + j] != def->single_comment[j]) {
@@ -325,11 +331,11 @@ void syntax_highlight_line(line_t *line, language_t *lang) {
                 }
 
                 // Check for keyword
-                if (isalpha(c) || c == '_') {
+                if (isalpha((unsigned char)c) || c == '_') {
                     // Find word boundaries
                     u32 start = i;
                     while (i < line->text.len &&
-                           (isalnum(line->text.data[i]) || line->text.data[i] == '_')) {
+                           (isalnum((unsigned char)line->text.data[i]) || line->text.data[i] == '_')) {
                         i++;
                     }
                     sp_str_t word = sp_str_sub(line->text, (s32)start, (s32)(i - start));
@@ -365,7 +371,7 @@ void syntax_highlight_line(line_t *line, language_t *lang) {
             }
 
             case STATE_NUMBER: {
-                if (isdigit(c) || c == '.' || c == 'x' || c == 'X' ||
+                if (isdigit((unsigned char)c) || c == '.' || c == 'x' || c == 'X' ||
                     c == 'a' || c == 'A' || c == 'b' || c == 'B' ||
                     c == 'c' || c == 'C' || c == 'e' || c == 'E' ||
                     c == 'f' || c == 'F' || c == 'u' || c == 'U' ||

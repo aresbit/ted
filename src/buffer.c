@@ -36,6 +36,7 @@ void buffer_insert_line(buffer_t *buf, u32 at, sp_str_t text) {
     if (buf->line_count >= buf->line_capacity) {
         u32 new_cap = buf->line_capacity == 0 ? 16 : buf->line_capacity * 2;
         line_t *new_lines = sp_alloc(sizeof(line_t) * new_cap);
+        if (!new_lines) return;
 
         for (u32 i = 0; i < buf->line_count; i++) {
             new_lines[i] = buf->lines[i];
@@ -157,6 +158,32 @@ u32 buffer_row_to_render(buffer_t *buf, u32 row, u32 col) {
     }
 
     return render_col;
+}
+
+u32 buffer_render_to_row(buffer_t *buf, u32 row, u32 render_col) {
+    if (row >= buf->line_count) return render_col;
+
+    sp_str_t line = buf->lines[row].text;
+    u32 current_render = 0;
+    u32 i;
+
+    for (i = 0; i < line.len && current_render < render_col; i++) {
+        if (line.data[i] == '\t') {
+            u32 tab_stop = E.config.tab_width - (current_render % E.config.tab_width);
+            // If adding this tab would exceed render_col, we're at the right position
+            if (current_render + tab_stop > render_col) {
+                break;
+            }
+            current_render += tab_stop;
+        } else {
+            current_render++;
+        }
+    }
+
+    // i now points to the character whose render position is >= render_col
+    // If we stopped because current_render >= render_col, return i
+    // If we stopped because we reached end of line, return line.len
+    return i;
 }
 
 void buffer_load_file(buffer_t *buf, sp_str_t filename) {

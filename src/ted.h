@@ -13,6 +13,25 @@
 #define TAB_WIDTH_DEFAULT 4
 #define MAX_LINE_LENGTH 4096
 
+// Special key codes (start at 0x1000 to avoid conflict with ASCII)
+#define KEY_UP 0x1000
+#define KEY_DOWN 0x1001
+#define KEY_RIGHT 0x1002
+#define KEY_LEFT 0x1003
+#define KEY_HOME 0x1004
+#define KEY_END 0x1005
+#define KEY_DELETE 0x1006
+#define KEY_PAGE_UP 0x1007
+#define KEY_PAGE_DOWN 0x1008
+
+// Shift+arrow key codes
+#define KEY_SHIFT_UP 0x1100
+#define KEY_SHIFT_DOWN 0x1101
+#define KEY_SHIFT_RIGHT 0x1102
+#define KEY_SHIFT_LEFT 0x1103
+#define KEY_SHIFT_HOME 0x1104
+#define KEY_SHIFT_END 0x1105
+
 // Editor modes
 typedef enum {
     MODE_NORMAL,
@@ -100,6 +119,7 @@ typedef struct {
     u32 tab_width;
 } config_t;
 
+
 // Main editor state
 typedef struct {
     buffer_t buffer;
@@ -120,6 +140,8 @@ typedef struct {
     undo_stack_t undo;
     undo_stack_t redo;
     config_t config;
+    sp_str_t clipboard;
+
 
     u32 screen_rows;
     u32 screen_cols;
@@ -156,6 +178,8 @@ void editor_insert_newline(void);
 void editor_delete_char(void);
 void editor_delete_line(u32 row);
 void editor_copy_line(void);
+void editor_cut_line(void);
+void editor_paste(void);
 void editor_move_cursor(u32 key);
 void editor_goto_line(u32 line);
 void editor_set_message(const c8 *fmt, ...);
@@ -171,6 +195,7 @@ void buffer_insert_char_at(buffer_t *buf, u32 row, u32 col, c8 c);
 void buffer_delete_char_at(buffer_t *buf, u32 row, u32 col);
 sp_str_t buffer_get_line(buffer_t *buf, u32 row);
 u32 buffer_row_to_render(buffer_t *buf, u32 row, u32 col);
+u32 buffer_render_to_row(buffer_t *buf, u32 row, u32 render_col);
 
 // display.c
 void display_init(void);

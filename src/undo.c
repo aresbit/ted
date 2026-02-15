@@ -35,7 +35,12 @@ void undo_push(undo_stack_t *stack, action_t *action) {
     if (stack->current < stack->count) {
         // Free actions that will be overwritten
         for (u32 i = stack->current; i < stack->count; i++) {
-            // sp_str_t handles cleanup automatically
+            if (stack->actions[i].type == ACTION_INSERT_LINE ||
+                stack->actions[i].type == ACTION_DELETE_LINE) {
+                if (stack->actions[i].text.data) {
+                    sp_free((void*)stack->actions[i].text.data);
+                }
+            }
         }
         stack->count = stack->current;
     }
@@ -52,6 +57,15 @@ action_t* undo_pop(undo_stack_t *stack) {
 }
 
 void undo_clear(undo_stack_t *stack) {
+    // Free text data for line operations
+    for (u32 i = 0; i < stack->count; i++) {
+        if (stack->actions[i].type == ACTION_INSERT_LINE ||
+            stack->actions[i].type == ACTION_DELETE_LINE) {
+            if (stack->actions[i].text.data) {
+                sp_free((void*)stack->actions[i].text.data);
+            }
+        }
+    }
     if (stack->actions) {
         sp_free(stack->actions);
     }
@@ -92,7 +106,7 @@ void undo_record_insert_line(u32 row, sp_str_t text) {
         .type = ACTION_INSERT_LINE,
         .row = row,
         .col = 0,
-        .text = text,
+        .text = sp_str_copy(text),
         .old_text = sp_str_lit("")
     };
     undo_push(&E.undo, &action);
@@ -104,7 +118,7 @@ void undo_record_delete_line(u32 row, sp_str_t text) {
         .type = ACTION_DELETE_LINE,
         .row = row,
         .col = 0,
-        .text = text,
+        .text = sp_str_copy(text),
         .old_text = sp_str_lit("")
     };
     undo_push(&E.undo, &action);

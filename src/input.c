@@ -39,56 +39,80 @@ int input_read_key(void) {
             return '\033'; // Just ESC key
         }
 
-        c8 seq[3];
+        c8 seq[16]; // Buffer for escape sequence
+        u32 seq_len = 0;
+
+        // Read the first character after ESC
         if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\033';
-        
+        seq_len = 1;
+
         if (seq[0] == '[') {
-            if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\033';
-            
-            switch (seq[1]) {
-                case 'A': return 0x1000; // Up
-                case 'B': return 0x1001; // Down
-                case 'C': return 0x1002; // Right
-                case 'D': return 0x1003; // Left
-                case 'H': return 0x1004; // Home
-                case 'F': return 0x1005; // End
-                case '1': // Home (alternate)
-                    if (input_available()) {
-                        c8 end;
-                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
-                            return 0x1004;
-                        }
+            // Read the rest of the sequence until we get a command character
+            while (seq_len < sizeof(seq) - 1) {
+                if (!input_available()) {
+                    // No more data, wait a bit
+                    usleep(1000);
+                    if (!input_available()) break;
+                }
+                if (read(STDIN_FILENO, &seq[seq_len], 1) != 1) break;
+
+                // Check if this is a command character (A-Z, a-z, ~)
+                c8 c = seq[seq_len];
+                if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '~') {
+                    seq_len++;
+                    break;
+                }
+                seq_len++;
+            }
+
+            // Null-terminate for easier debugging (not strictly needed)
+            seq[seq_len] = '\0';
+
+            // Parse the sequence
+            // Format can be:
+            // - Simple: "A", "B", "C", "D", "H", "F"
+            // - With numeric prefix: "1~", "3~", "4~", "5~", "6~"
+            // - With modifiers: "1;2A" (where ;2 is Shift modifier)
+
+            // Check for modifiers (sequence contains ';')
+            bool has_modifier = false;
+            u32 modifier = 0;
+            for (u32 i = 0; i < seq_len; i++) {
+                if (seq[i] == ';') {
+                    has_modifier = true;
+                    // Parse modifier number after ';'
+                    if (i + 1 < seq_len && seq[i + 1] >= '0' && seq[i + 1] <= '9') {
+                        modifier = seq[i + 1] - '0';
                     }
                     break;
-                case '3': // Delete
-                    if (input_available()) {
-                        c8 end;
-                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
-                            return 0x1006;
-                        }
-                    }
-                    break;
-                case '4': // End (alternate)
-                    if (input_available()) {
-                        c8 end;
-                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
-                            return 0x1005;
-                        }
-                    }
-                    break;
-                case '5': // Page Up
-                    if (input_available()) {
-                        c8 end;
-                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
-                            return 0x1007;
-                        }
-                    }
-                    break;
-                case '6': // Page Down
-                    if (input_available()) {
-                        c8 end;
-                        if (read(STDIN_FILENO, &end, 1) == 1 && end == '~') {
-                            return 0x1008;
+                }
+            }
+
+            // Get the command character (last character in sequence)
+            c8 cmd = seq[seq_len - 1];
+
+            // Map command to key code
+            switch (cmd) {
+                case 'A': // Up
+                    return has_modifier && modifier == 2 ? KEY_SHIFT_UP : KEY_UP;
+                case 'B': // Down
+                    return has_modifier && modifier == 2 ? KEY_SHIFT_DOWN : KEY_DOWN;
+                case 'C': // Right
+                    return has_modifier && modifier == 2 ? KEY_SHIFT_RIGHT : KEY_RIGHT;
+                case 'D': // Left
+                    return has_modifier && modifier == 2 ? KEY_SHIFT_LEFT : KEY_LEFT;
+                case 'H': // Home
+                    return has_modifier && modifier == 2 ? KEY_SHIFT_HOME : KEY_HOME;
+                case 'F': // End
+                    return has_modifier && modifier == 2 ? KEY_SHIFT_END : KEY_END;
+                case '~': // Special keys with numeric prefix
+                    if (seq_len >= 2) {
+                        switch (seq[0]) {
+                            case '1': return KEY_HOME;    // Home (alternate)
+                            case '3': return KEY_DELETE;  // Delete
+                            case '4': return KEY_END;     // End (alternate)
+                            case '5': return KEY_PAGE_UP;
+                            case '6': return KEY_PAGE_DOWN;
                         }
                     }
                     break;
@@ -103,28 +127,43 @@ int input_read_key(void) {
 
 void input_handle_normal(int c) {
     switch (c) {
-        // Navigation
-        case 0x1000: // Up
-        case 0x1001: // Down
-        case 0x1002: // Right
-        case 0x1003: // Left
-        case 0x1004: // Home
-        case 0x1005: // End
+        // Navigation (without Shift)
+        case KEY_UP:
+        case KEY_DOWN:
+        case KEY_RIGHT:
+        case KEY_LEFT:
+        case KEY_HOME:
+        case KEY_END:
             editor_move_cursor(c);
+            break;
+
+        // Navigation with Shift (extend selection)
+        case KEY_SHIFT_UP:
+        case KEY_SHIFT_DOWN:
+        case KEY_SHIFT_RIGHT:
+        case KEY_SHIFT_LEFT:
+        case KEY_SHIFT_HOME:
+        case KEY_SHIFT_END:
+            // Start or extend selection
+            if (!E.has_selection) {
+                E.select_start = E.cursor;
+                E.has_selection = true;
+            }
+            editor_move_cursor(c - 0x100); // Convert to regular key code for movement
             break;
 
         // Vim-style navigation
         case 'h':
-            editor_move_cursor(0x1003); // Left
+            editor_move_cursor(KEY_LEFT); // Left
             break;
         case 'j':
-            editor_move_cursor(0x1001); // Down
+            editor_move_cursor(KEY_DOWN); // Down
             break;
         case 'k':
-            editor_move_cursor(0x1000); // Up
+            editor_move_cursor(KEY_UP); // Up
             break;
         case 'l':
-            editor_move_cursor(0x1002); // Right
+            editor_move_cursor(KEY_RIGHT); // Right
             break;
 
         // Mode switching
@@ -179,7 +218,7 @@ void input_handle_normal(int c) {
 
         // Page scroll
         case ' ':
-        case 0x1008: // Page Down
+        case KEY_PAGE_DOWN: // Page Down
             if (E.buffer.line_count > 0) {
                 E.row_offset += E.screen_rows;
                 if (E.row_offset >= E.buffer.line_count) {
@@ -189,7 +228,7 @@ void input_handle_normal(int c) {
             }
             break;
 
-        case 0x1007: // Page Up
+        case KEY_PAGE_UP: // Page Up
             if (E.row_offset >= E.screen_rows) {
                 E.row_offset -= E.screen_rows;
             } else {
@@ -221,6 +260,7 @@ void input_handle_normal(int c) {
         case 'Q':
             editor_quit();
             break;
+
     }
 }
 
@@ -281,18 +321,35 @@ void input_handle_insert(int c) {
             display_clear();
             break;
 
-        // Arrow keys in insert mode
-        case 0x1000: // Up
-        case 0x1001: // Down
-        case 0x1002: // Right
-        case 0x1003: // Left
-        case 0x1004: // Home
-        case 0x1005: // End
+        // Arrow keys in insert mode (without Shift)
+        case KEY_UP:
+        case KEY_DOWN:
+        case KEY_RIGHT:
+        case KEY_LEFT:
+        case KEY_HOME:
+        case KEY_END:
+            E.has_selection = false;
             editor_move_cursor(c);
             break;
 
+        // Arrow keys with Shift in insert mode (extend selection)
+        case KEY_SHIFT_UP:
+        case KEY_SHIFT_DOWN:
+        case KEY_SHIFT_RIGHT:
+        case KEY_SHIFT_LEFT:
+        case KEY_SHIFT_HOME:
+        case KEY_SHIFT_END:
+            // Start or extend selection
+            if (!E.has_selection) {
+                E.select_start = E.cursor;
+                E.has_selection = true;
+            }
+            editor_move_cursor(c - 0x100); // Convert to regular key code for movement
+            break;
+
+
         // Delete key
-        case 0x1006:
+        case KEY_DELETE:
             if (E.cursor.col < E.buffer.lines[E.cursor.row].text.len) {
                 buffer_delete_char_at(&E.buffer, E.cursor.row, E.cursor.col);
             } else if (E.cursor.row + 1 < E.buffer.line_count) {
@@ -325,6 +382,17 @@ void input_handle_insert(int c) {
         // Tab
         case '\t':
             editor_insert_char('\t');
+            break;
+
+        // Clipboard operations
+        case 3: // Ctrl+C
+            editor_copy_line();
+            break;
+        case 24: // Ctrl+X
+            editor_cut_line();
+            break;
+        case 22: // Ctrl+V
+            editor_paste();
             break;
 
         // Regular character

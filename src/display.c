@@ -26,11 +26,45 @@
 static struct termios orig_termios;
 static sp_io_writer_t stdout_writer;
 
+// Check if a character at (file_row, file_col) is within selection
+static bool is_selected(u32 file_row, u32 file_col) {
+    if (!E.has_selection) return false;
+
+    // Normalize selection start/end
+    u32 start_row = E.select_start.row;
+    u32 start_col = E.select_start.col;
+    u32 end_row = E.cursor.row;
+    u32 end_col = E.cursor.col;
+
+    if (start_row > end_row || (start_row == end_row && start_col > end_col)) {
+        // Swap start and end
+        u32 tmp = start_row; start_row = end_row; end_row = tmp;
+        tmp = start_col; start_col = end_col; end_col = tmp;
+    }
+
+    // Check if position is within selection bounds
+    if (file_row < start_row || file_row > end_row) return false;
+
+    if (file_row == start_row && file_row == end_row) {
+        // Single line selection
+        return file_col >= start_col && file_col < end_col;
+    } else if (file_row == start_row) {
+        // First line of multi-line selection
+        return file_col >= start_col;
+    } else if (file_row == end_row) {
+        // Last line of multi-line selection
+        return file_col < end_col;
+    } else {
+        // Middle line - entirely selected
+        return true;
+    }
+}
+
 // Restore terminal on exit
 static void cleanup_terminal(void) {
     // Restore terminal settings
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
-    
+
     // Clear screen and move cursor to top
     sp_io_writer_t out = sp_io_writer_from_fd(STDOUT_FILENO, SP_IO_CLOSE_MODE_NONE);
     sp_io_write_cstr(&out, ESC "2J");
@@ -114,7 +148,7 @@ void display_init(void) {
 }
 
 void display_draw_rows(void) {
-    u32 gutter_width = E.config.show_line_numbers ? 6 : 0;
+    u32 gutter_width = E.config.show_line_numbers ? 5 : 0;
     u32 text_width = E.screen_cols - gutter_width;
 
     for (u32 y = 0; y < E.screen_rows; y++) {
@@ -153,11 +187,13 @@ void display_draw_rows(void) {
             u32 col_end = col_start + text_width;
             if (col_end > line.len) col_end = line.len;
 
-            // Render line with syntax highlighting
+            // Render line with syntax highlighting and selection
             highlight_type_t current_hl = HL_NORMAL;
-            
+            bool in_selection = false;
+
             for (u32 i = col_start; i < col_end; i++) {
                 c8 c = line.data[i];
+                bool selected = is_selected(file_row, i);
 
                 // Apply syntax color if enabled
                 if (E.config.syntax_enabled && line_info->hl && i < line.len) {
@@ -166,6 +202,16 @@ void display_draw_rows(void) {
                         sp_io_write_cstr(&stdout_writer, syntax_color_to_ansi(hl));
                         current_hl = hl;
                     }
+                }
+
+                // Apply selection highlight
+                if (selected != in_selection) {
+                    if (selected) {
+                        sp_io_write_cstr(&stdout_writer, "\033[7m"); // Reverse video
+                    } else {
+                        sp_io_write_cstr(&stdout_writer, "\033[27m"); // Reset reverse video
+                    }
+                    in_selection = selected;
                 }
 
                 // Handle tabs
@@ -181,6 +227,11 @@ void display_draw_rows(void) {
                 } else {
                     sp_io_write_cstr(&stdout_writer, ".");
                 }
+            }
+
+            // Reset selection highlight if still active at end of line
+            if (in_selection) {
+                sp_io_write_cstr(&stdout_writer, "\033[27m");
             }
 
             // Reset color at end of line
@@ -309,13 +360,13 @@ void display_refresh(void) {
     display_draw_status_bar();
     display_draw_message_bar();
 
-    // Calculate cursor position
-    u32 cursor_row = E.cursor.row - E.row_offset;
-    u32 cursor_col = E.cursor.render_col - E.col_offset;
+    // Calculate cursor position (with bounds checking)
+    u32 cursor_row = (E.cursor.row >= E.row_offset) ? (E.cursor.row - E.row_offset) : 0;
+    u32 cursor_col = (E.cursor.render_col >= E.col_offset) ? (E.cursor.render_col - E.col_offset) : 0;
 
     // Account for line number gutter
     if (E.config.show_line_numbers) {
-        cursor_col += 6; // "1234 " format
+        cursor_col += 5; // "1234 " format (4 digits + 1 space)
     }
 
     // Adjust for command/search mode input
@@ -327,9 +378,11 @@ void display_refresh(void) {
         if (E.mode == MODE_REPLACE) cursor_col += E.search.query.len + 12; // For "Replace: ... -> "
     }
 
-    // Ensure cursor is within bounds
-    if (cursor_row >= E.screen_rows + 2) cursor_row = E.screen_rows + 1;
-    if (cursor_col >= E.screen_cols) cursor_col = E.screen_cols - 1;
+    // Ensure cursor is within bounds (for normal/edit mode, not command/search)
+    if (E.mode != MODE_COMMAND && E.mode != MODE_SEARCH && E.mode != MODE_REPLACE) {
+        if (cursor_row >= E.screen_rows) cursor_row = E.screen_rows - 1;
+        if (cursor_col >= E.screen_cols) cursor_col = E.screen_cols - 1;
+    }
 
     display_set_cursor(cursor_row, cursor_col);
 
