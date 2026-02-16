@@ -170,7 +170,7 @@ void die(const c8 *msg);
 // editor.c
 void editor_init(void);
 void editor_open(sp_str_t filename);
-void editor_save(void);
+bool editor_save(void);
 void editor_quit(void);
 void editor_process_keypress(void);
 void editor_insert_char(c8 c);

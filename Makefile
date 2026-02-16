@@ -1,4 +1,4 @@
-# TED - Terminal Editor Makefile
+# TED - Termux Editor Makefile
 # Modern C Makefile based on gnaro project template
 
 # Termux compatibility: avoid /tmp permissions

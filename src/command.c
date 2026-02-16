@@ -46,7 +46,7 @@ void command_execute(sp_str_t cmd) {
     if (sp_str_equal(command, sp_str_lit("w")) ||
         sp_str_equal(command, sp_str_lit("write"))) {
         if (arg.len > 0) {
-            E.buffer.filename = arg;
+            E.buffer.filename = sp_str_copy(arg);
         }
         editor_save();
         return;
@@ -61,8 +61,12 @@ void command_execute(sp_str_t cmd) {
 
     // :wq - save and quit
     if (sp_str_equal(command, sp_str_lit("wq"))) {
-        editor_save();
-        editor_quit();
+        if (arg.len > 0) {
+            E.buffer.filename = sp_str_copy(arg);
+        }
+        if (editor_save()) {
+            editor_quit();
+        }
         return;
     }
 

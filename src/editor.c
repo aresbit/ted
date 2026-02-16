@@ -55,16 +55,17 @@ void editor_open(sp_str_t filename) {
     editor_set_message("Opened - %u lines", E.buffer.line_count);
 }
 
-void editor_save(void) {
+bool editor_save(void) {
     if (E.buffer.filename.len == 0 || sp_str_equal(E.buffer.filename, sp_str_lit("[No Name]"))) {
         E.mode = MODE_COMMAND;
         E.command_buffer = sp_str_lit("w ");
         editor_set_message("Enter filename:");
-        return;
+        return false;
     }
 
     buffer_save_file(&E.buffer);
     editor_set_message("Saved %u lines", E.buffer.line_count);
+    return true;
 }
 
 void editor_quit(void) {
