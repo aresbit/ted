@@ -21,7 +21,7 @@ DIGITAL_RAIN_SRCS := src/digital_rain.c src/digital_rain_main.c
 DIGITAL_RAIN_OBJS := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(DIGITAL_RAIN_SRCS))
 
 # Compiler Configuration
-CC := gcc
+CC := clang
 CFLAGS := -std=gnu17 -Wall -Wextra -pedantic -O2 -D_GNU_SOURCE
 CFLAGS += -Iinclude -fPIC -DSP_PS_DISABLE
 
