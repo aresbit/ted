@@ -60,6 +60,36 @@ make install PREFIX=/your/path
 sudo make uninstall
 ```
 
+### LLM 环境变量配置
+
+在环境变量里配置，`ted` 启动时读取。
+
+优先级如下：
+
+1. `TED_LLM_API_URL` + `TED_LLM_API_KEY`（可选 `TED_LLM_MODEL`）
+2. `DEEPSEEK_API_KEY`
+3. `KIMI_API_KEY`
+
+示例（推荐通用方式）：
+
+```bash
+export TED_LLM_API_URL="https://api.openai.com/v1/chat/completions"
+export TED_LLM_API_KEY="你的key"
+export TED_LLM_MODEL="gpt-4.1-mini"
+```
+
+DeepSeek 示例：
+
+```bash
+export DEEPSEEK_API_KEY="你的key"
+```
+
+Kimi 示例：
+
+```bash
+export KIMI_API_KEY="你的key"
+```
+
 ---
 
 ## 🚀 快速开始
@@ -129,6 +159,10 @@ ted
 | `:set nu` | 显示行号 |
 | `:set nonu` | 隐藏行号 |
 | `:syntax on/off` | 开启/关闭语法高亮 |
+| `:llm prompt` | 发送提示词（含上下文） |
+| `:llmshow` | 预览最近一次 LLM 结果 |
+| `:llmcopy` | 把最近一次 LLM 结果复制到剪贴板 |
+| `:llmstatus` | 查看 LLM 配置状态 |
 | `:help` | 显示帮助 |
 
 ### 文本选择
