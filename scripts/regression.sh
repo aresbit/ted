@@ -29,6 +29,10 @@ rg -q 'cmd_langs|\"langs\"' src/command.c || {
   echo 'langs command check failed' >&2
   exit 1
 }
+rg -q 'cmd_llm|\"llm\"|cmd_llmcopy|\"llmcopy\"|cmd_llmshow|\"llmshow\"' src/command.c || {
+  echo 'llm command check failed' >&2
+  exit 1
+}
 rg -q 'cmd_targets|\"targets\"' src/command.c || {
   echo 'targets command check failed' >&2
   exit 1
@@ -41,6 +45,10 @@ rg -q 'registerLanguage' src/ext.c || {
 }
 rg -q 'registerOperatorTarget' src/ext.c || {
   echo 'registerOperatorTarget api check failed' >&2
+  exit 1
+}
+rg -q 'llm_query|llm_status|TED_LLM_API_URL|DEEPSEEK_API_KEY' src/llm.c src/ted.h || {
+  echo 'llm bridge check failed' >&2
   exit 1
 }
 rg -q 'tree on|tree off|tree status|treesitter_set_enabled' src/command.c src/treesitter.c || {

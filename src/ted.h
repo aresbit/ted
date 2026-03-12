@@ -279,6 +279,10 @@ sp_str_t ext_list_loaded_plugins(void);
 bool ext_invoke_registered_command(sp_str_t code, sp_str_t arg, sp_str_t *output, sp_str_t *error);
 bool ext_invoke_operator_target(sp_str_t code, c8 op, sp_str_t seq, u32 count, u32 row, u32 col, sp_str_t *output, sp_str_t *error);
 
+// llm.c
+bool llm_query(sp_str_t prompt, bool with_context, sp_str_t *output, sp_str_t *error);
+sp_str_t llm_status(void);
+
 // undo.c
 void undo_init(undo_stack_t *stack);
 void undo_push(undo_stack_t *stack, action_t *action);

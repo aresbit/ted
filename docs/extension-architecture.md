@@ -132,6 +132,18 @@ To add a command:
   - run `:syntax tree on`
   - run `:syntax tree status`
 
+### Phase 8: Agent LLM Bridge (In Progress)
+- Added minimal curl-based LLM adapter `llm.c`.
+- Shell commands:
+  - `:llm <prompt>` (send prompt + current buffer context; stores result for user decision)
+  - `:llmshow` (preview latest response)
+  - `:llmcopy` (copy latest response to clipboard after confirmation choice)
+  - `:llmstatus` (check env configuration)
+- Config priority:
+  1. `TED_LLM_API_URL` + `TED_LLM_API_KEY` (+ optional `TED_LLM_MODEL`)
+  2. `DEEPSEEK_API_KEY`
+  3. `KIMI_API_KEY`
+
 ## Non-goals (for now)
 - No hot-reload daemon yet
 - No async job scheduler yet

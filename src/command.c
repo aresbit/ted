@@ -24,6 +24,7 @@ typedef struct {
 #define DYN_COMMAND_CAP 64
 static dynamic_command_t G_dyn_commands[DYN_COMMAND_CAP];
 static u32 G_dyn_command_count = 0;
+static sp_str_t G_last_llm_response = SP_LIT("");
 
 void command_init(void) {
     // Commands are registered statically in COMMANDS table.
@@ -211,7 +212,7 @@ static bool cmd_edit_force(sp_str_t arg) {
 
 static bool cmd_help(sp_str_t arg) {
     (void)arg;
-    editor_set_message("TED v" TED_VERSION " | :agent :js :source :langs :targets | ted.registerCommand/registerLanguage/registerOperatorTarget");
+    editor_set_message("TED v" TED_VERSION " | :llm :llmshow :llmcopy :llmstatus :js :source :langs");
     return true;
 }
 
@@ -251,6 +252,67 @@ static bool cmd_js(sp_str_t arg) {
     } else {
         editor_set_message("JS executed");
     }
+    return true;
+}
+
+static bool cmd_llm(sp_str_t arg) {
+    if (arg.len == 0) {
+        editor_set_message("Usage: :llm <prompt>");
+        return true;
+    }
+
+    sp_str_t out = sp_str_lit("");
+    sp_str_t err = sp_str_lit("");
+    if (!llm_query(arg, true, &out, &err)) {
+        editor_set_message("LLM error: %.*s", (int)err.len, err.data);
+        return true;
+    }
+    if (out.len == 0) {
+        editor_set_message("LLM returned empty response");
+        return true;
+    }
+
+    G_last_llm_response = sp_str_copy(out);
+    if (out.len <= 100) {
+        editor_set_message("LLM: %.*s | :llmcopy to copy", (int)out.len, out.data);
+    } else {
+        editor_set_message("LLM ready (%u chars). Use :llmshow or :llmcopy", out.len);
+    }
+    return true;
+}
+
+static bool cmd_llmstatus(sp_str_t arg) {
+    (void)arg;
+    sp_str_t s = llm_status();
+    editor_set_message("LLM: %.*s", (int)s.len, s.data);
+    return true;
+}
+
+static bool cmd_llmshow(sp_str_t arg) {
+    (void)arg;
+    if (G_last_llm_response.len == 0) {
+        editor_set_message("No LLM response yet. Use :llm <prompt>");
+        return true;
+    }
+
+    u32 max_len = E.screen_cols > 20 ? E.screen_cols - 10 : 70;
+    if (G_last_llm_response.len <= max_len) {
+        editor_set_message("LLM: %.*s", (int)G_last_llm_response.len, G_last_llm_response.data);
+    } else {
+        editor_set_message("LLM: %.*s...", (int)max_len, G_last_llm_response.data);
+    }
+    return true;
+}
+
+static bool cmd_llmcopy(sp_str_t arg) {
+    (void)arg;
+    if (G_last_llm_response.len == 0) {
+        editor_set_message("No LLM response to copy. Use :llm <prompt>");
+        return true;
+    }
+
+    E.clipboard = sp_str_copy(G_last_llm_response);
+    editor_set_message("LLM response copied to clipboard (%u chars)", G_last_llm_response.len);
     return true;
 }
 
@@ -337,6 +399,10 @@ static const command_spec_t COMMANDS[] = {
     { "help", cmd_help },
     { "h", cmd_help },
     { "agent", cmd_agent },
+    { "llm", cmd_llm },
+    { "llmshow", cmd_llmshow },
+    { "llmcopy", cmd_llmcopy },
+    { "llmstatus", cmd_llmstatus },
     { "js", cmd_js },
     { "source", cmd_source },
     { "plugins", cmd_plugins },

@@ -37,7 +37,9 @@ typedef struct {
 static completion_cycle_t G_completion_cycle = {0};
 static const c8 *CMD_CANDIDATES[] = {
     "w", "write", "q", "quit", "wq", "q!", "goto", "g",
-    "set", "syntax", "e", "edit", "e!", "edit!", "help", "h", "agent", "js", "source", "plugins", "langs", "targets"
+    "set", "syntax", "e", "edit", "e!", "edit!", "help", "h",
+    "agent", "llm", "llmshow", "llmcopy", "llmstatus",
+    "js", "source", "plugins", "langs", "targets"
 };
 static const c8 *SET_CANDIDATES[] = {
     "nu", "number", "nonu", "nonumber", "syntax", "nosyntax", "wrap", "nowrap"

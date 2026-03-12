@@ -93,6 +93,7 @@ Agent-first 目标：
 40. 新增 tree-sitter 最小接入：`treesitter.c` + `:syntax tree on|off|status`，渲染阶段先回退现有 C tokenizer。
 41. 改为原生内置 C grammar：编译期静态链接 `vendor/tree-sitter` runtime 与 `vendor/tree-sitter-c` parser，不依赖脚本或运行时 `.so` 装载。
 42. 新增 tree-sitter C 高亮映射：基于语法节点类型写入 `HL_*`（comment/string/number/type/keyword），并对非 C 语言保持 tokenizer 回退。
+43. 新增 `curl` LLM 接入：`:llm/:llmstatus` 与上下文提示注入，并按“先展示后选择”新增 `:llmshow/:llmcopy`。
 
 ## 6. 下一个特性建议（紧接开发）
 建议优先做：`JS 语言包机制（语言定义文件 + 启动自动加载）`。
