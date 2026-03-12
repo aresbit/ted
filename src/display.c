@@ -26,6 +26,17 @@
 static struct termios orig_termios;
 static sp_io_writer_t stdout_writer;
 
+static const c8* display_context_hint(void) {
+    if (E.mode != MODE_NORMAL) return "";
+    if (E.buffer.modified) {
+        return "Hint: Unsaved changes, press Ctrl+S to save.";
+    }
+    if (E.buffer.filename.len == 0 || sp_str_equal(E.buffer.filename, sp_str_lit("[No Name]"))) {
+        return "Hint: :w <file> to save as, / to search, i to start editing.";
+    }
+    return "Hint: i edit, / search, :help commands, ? quick tips.";
+}
+
 // Check if a character at (file_row, file_col) is within selection
 static bool is_selected(u32 file_row, u32 file_col) {
     if (!E.has_selection) return false;
@@ -150,6 +161,20 @@ void display_init(void) {
 void display_draw_rows(void) {
     u32 gutter_width = E.config.show_line_numbers ? 5 : 0;
     u32 text_width = E.screen_cols - gutter_width;
+    bool need_rehighlight = false;
+
+    if (E.config.syntax_enabled) {
+        for (u32 i = 0; i < E.buffer.line_count; i++) {
+            if (!E.buffer.lines[i].hl_dirty) continue;
+            need_rehighlight = true;
+            break;
+        }
+    }
+    if (need_rehighlight) {
+        if (!treesitter_highlight_buffer(&E.buffer)) {
+            syntax_highlight_buffer(&E.buffer);
+        }
+    }
 
     for (u32 y = 0; y < E.screen_rows; y++) {
         u32 file_row = y + E.row_offset;
@@ -172,15 +197,8 @@ void display_draw_rows(void) {
             // Get line content
             sp_str_t line = buffer_get_line(&E.buffer, file_row);
 
-            // Apply syntax highlighting if needed
+            // line_info->hl is maintained by buffer-level rehighlight above.
             line_t *line_info = &E.buffer.lines[file_row];
-            if (E.config.syntax_enabled && line_info->hl_dirty) {
-                language_t *lang = syntax_detect_language(E.buffer.filename);
-                if (lang) {
-                    syntax_highlight_line(line_info, lang);
-                }
-                line_info->hl_dirty = false;
-            }
 
             // Handle horizontal scrolling
             u32 col_start = E.col_offset;
@@ -258,6 +276,7 @@ void display_draw_status_bar(void) {
     // Mode indicator
     const c8 *mode_str;
     switch (E.mode) {
+        case MODE_OPERATOR_PENDING: mode_str = "OP-PENDING"; break;
         case MODE_INSERT: mode_str = "INSERT"; break;
         case MODE_COMMAND: mode_str = "COMMAND"; break;
         case MODE_SEARCH: mode_str = "SEARCH"; break;
@@ -304,6 +323,12 @@ void display_draw_message_bar(void) {
         case MODE_COMMAND: {
             sp_str_t msg = sp_format(":{}", SP_FMT_STR(E.command_buffer));
             sp_io_write_str(&stdout_writer, msg);
+            if (E.command_hint.len > 0) {
+                sp_io_write_cstr(&stdout_writer, "  | ");
+                sp_io_write_cstr(&stdout_writer, "\033[90m");
+                sp_io_write_str(&stdout_writer, E.command_hint);
+                sp_io_write_cstr(&stdout_writer, COLOR_RESET);
+            }
             break;
         }
         case MODE_SEARCH: {
@@ -337,6 +362,13 @@ void display_draw_message_bar(void) {
                 }
                 
                 sp_io_write_cstr(&stdout_writer, COLOR_RESET);
+            } else {
+                const c8 *hint = display_context_hint();
+                if (hint[0] != '\0') {
+                    sp_io_write_cstr(&stdout_writer, "\033[90m");
+                    sp_io_write_cstr(&stdout_writer, hint);
+                    sp_io_write_cstr(&stdout_writer, COLOR_RESET);
+                }
             }
             break;
         }

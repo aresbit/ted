@@ -4,6 +4,26 @@
 
 #include "ted.h"
 
+static c8 normalize_char(c8 c) {
+    if (c >= 'A' && c <= 'Z') return c + 32;
+    return c;
+}
+
+static bool search_match_at(sp_str_t line, u32 col, sp_str_t query, bool case_sensitive) {
+    if (col + query.len > line.len) return false;
+
+    for (u32 i = 0; i < query.len; i++) {
+        c8 lc = line.data[col + i];
+        c8 qc = query.data[i];
+        if (!case_sensitive) {
+            lc = normalize_char(lc);
+            qc = normalize_char(qc);
+        }
+        if (lc != qc) return false;
+    }
+    return true;
+}
+
 void search_init(void) {
     E.search.query = sp_str_lit("");
     E.search.current_match = 0;
@@ -25,20 +45,7 @@ void search_update_query(sp_str_t query) {
         u32 col = 0;
 
         while (col + query.len <= line.len) {
-            bool match = true;
-            for (u32 i = 0; i < query.len; i++) {
-                c8 lc = line.data[col + i];
-                c8 qc = query.data[i];
-                if (!E.search.case_sensitive) {
-                    lc = (lc >= 'A' && lc <= 'Z') ? lc + 32 : lc;
-                    qc = (qc >= 'A' && qc <= 'Z') ? qc + 32 : qc;
-                }
-                if (lc != qc) {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) {
+            if (search_match_at(line, col, query, E.search.case_sensitive)) {
                 E.search.match_count++;
                 col += query.len;
             } else {
@@ -53,27 +60,29 @@ void search_next(void) {
 
     u32 start_row = E.cursor.row;
     u32 start_col = E.cursor.col + 1;
+    bool wrapped = false;
 
-    // Search from current position to end
-    for (u32 row = start_row; row < E.buffer.line_count; row++) {
-        sp_str_t line = E.buffer.lines[row].text;
-        u32 col = (row == start_row) ? start_col : 0;
+    for (u32 pass = 0; pass < 2; pass++) {
+        u32 row_begin = (pass == 0) ? start_row : 0;
+        u32 row_end = (pass == 0) ? E.buffer.line_count : (start_row + 1);
 
-        while (col + E.search.query.len <= line.len) {
-            bool match = true;
-            for (u32 i = 0; i < E.search.query.len; i++) {
-                c8 lc = line.data[col + i];
-                c8 qc = E.search.query.data[i];
-                if (!E.search.case_sensitive) {
-                    lc = (lc >= 'A' && lc <= 'Z') ? lc + 32 : lc;
-                    qc = (qc >= 'A' && qc <= 'Z') ? qc + 32 : qc;
-                }
-                if (lc != qc) {
-                    match = false;
-                    break;
-                }
+        for (u32 row = row_begin; row < row_end; row++) {
+            sp_str_t line = E.buffer.lines[row].text;
+            u32 col = 0;
+            u32 col_limit = line.len;
+
+            if (pass == 0 && row == start_row) {
+                col = start_col;
+            } else if (pass == 1 && row == start_row) {
+                col_limit = start_col;
             }
-            if (match) {
+
+            while (col + E.search.query.len <= col_limit) {
+                if (!search_match_at(line, col, E.search.query, E.search.case_sensitive)) {
+                    col++;
+                    continue;
+                }
+
                 E.cursor.row = row;
                 E.cursor.col = col;
                 E.cursor.render_col = buffer_row_to_render(&E.buffer, row, col);
@@ -86,22 +95,19 @@ void search_next(void) {
                     E.row_offset = row - E.screen_rows / 2;
                 }
 
-                editor_set_message("Match found");
+                if (wrapped) {
+                    editor_set_message("Match found (wrapped)");
+                } else {
+                    editor_set_message("Match found");
+                }
                 return;
             }
-            col++;
         }
+
+        wrapped = true;
     }
 
-    // Wrap around to beginning
-    if (E.search.forward) {
-        editor_set_message("Search wrapped to beginning");
-        E.cursor.row = 0;
-        E.cursor.col = 0;
-        search_next();
-    } else {
-        editor_set_message("Pattern not found");
-    }
+    editor_set_message("Pattern not found");
 }
 
 void search_prev(void) {
@@ -111,52 +117,54 @@ void search_prev(void) {
 
     u32 start_row = E.cursor.row;
     u32 start_col = (E.cursor.col > 0) ? E.cursor.col - 1 : 0;
+    bool wrapped = false;
 
-    // Search backwards from current position
-    for (s32 row = (s32)start_row; row >= 0; row--) {
-        sp_str_t line = E.buffer.lines[row].text;
-        s32 col = (row == (s32)start_row) ? (s32)start_col : (s32)(line.len - E.search.query.len);
-        if (col < 0) col = (s32)(line.len - E.search.query.len);
-        if (col < 0) continue;
+    for (u32 pass = 0; pass < 2; pass++) {
+        s32 row_begin = (pass == 0) ? (s32)start_row : (s32)(E.buffer.line_count - 1);
+        s32 row_end = (pass == 0) ? 0 : (s32)start_row;
 
-        while (col >= 0) {
-            bool match = true;
-            for (u32 i = 0; i < E.search.query.len; i++) {
-                c8 lc = line.data[col + i];
-                c8 qc = E.search.query.data[i];
-                if (!E.search.case_sensitive) {
-                    lc = (lc >= 'A' && lc <= 'Z') ? lc + 32 : lc;
-                    qc = (qc >= 'A' && qc <= 'Z') ? qc + 32 : qc;
-                }
-                if (lc != qc) {
-                    match = false;
-                    break;
-                }
+        for (s32 row = row_begin; row >= row_end; row--) {
+            sp_str_t line = E.buffer.lines[row].text;
+            s32 col = (s32)(line.len - E.search.query.len);
+
+            if (pass == 0 && row == (s32)start_row) {
+                s32 max_col = (s32)start_col - (s32)E.search.query.len + 1;
+                if (max_col < col) col = max_col;
+            } else if (pass == 1 && row == (s32)start_row) {
+                col = (s32)(line.len - E.search.query.len);
             }
-            if (match) {
+
+            if (col < 0) continue;
+
+            while (col >= 0) {
+                if (!search_match_at(line, (u32)col, E.search.query, E.search.case_sensitive)) {
+                    col--;
+                    continue;
+                }
+
                 E.cursor.row = (u32)row;
                 E.cursor.col = (u32)col;
                 E.cursor.render_col = buffer_row_to_render(&E.buffer, (u32)row, (u32)col);
 
-                // Adjust scroll
                 if ((u32)row < E.row_offset) {
                     E.row_offset = (u32)row;
                 } else if ((u32)row >= E.row_offset + E.screen_rows) {
                     E.row_offset = (u32)row - E.screen_rows / 2;
                 }
 
-                editor_set_message("Previous match found");
+                if (wrapped) {
+                    editor_set_message("Previous match found (wrapped)");
+                } else {
+                    editor_set_message("Previous match found");
+                }
                 return;
             }
-            col--;
         }
+
+        wrapped = true;
     }
 
-    // Wrap around to end
-    editor_set_message("Search wrapped to end");
-    E.cursor.row = E.buffer.line_count - 1;
-    E.cursor.col = E.buffer.lines[E.cursor.row].text.len;
-    search_prev();
+    editor_set_message("Pattern not found");
 }
 
 void search_replace_current(sp_str_t replacement) {

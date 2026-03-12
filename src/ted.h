@@ -31,10 +31,12 @@
 #define KEY_SHIFT_LEFT 0x1103
 #define KEY_SHIFT_HOME 0x1104
 #define KEY_SHIFT_END 0x1105
+#define KEY_SHIFT_TAB 0x1106
 
 // Editor modes
 typedef enum {
     MODE_NORMAL,
+    MODE_OPERATOR_PENDING,
     MODE_INSERT,
     MODE_COMMAND,
     MODE_SEARCH,
@@ -132,7 +134,15 @@ typedef struct {
     u32 col_offset;
 
     editor_mode_t mode;
+    u32 normal_count;
+    c8 pending_operator;
+    u32 pending_count;
+    u32 pending_origin_row;
+    u32 pending_origin_col;
+    c8 pending_motion[8];
+    u32 pending_motion_len;
     sp_str_t command_buffer;
+    sp_str_t command_hint;
     sp_str_t message;
     u32 message_time;
 
@@ -158,6 +168,12 @@ typedef struct {
     sp_str_t multi_comment_end;
     c8 string_delim;
 } language_t;
+
+typedef enum {
+    SYNTAX_CONFLICT_OVERRIDE = 0,
+    SYNTAX_CONFLICT_SKIP,
+    SYNTAX_CONFLICT_ERROR,
+} syntax_conflict_policy_t;
 
 // Global editor instance
 extern editor_t E;
@@ -211,9 +227,31 @@ u32 display_get_screen_cols(void);
 // syntax.c
 void syntax_init(void);
 language_t* syntax_detect_language(sp_str_t filename);
+bool syntax_register_language(sp_str_t name,
+                              sp_str_t extensions,
+                              sp_str_t keywords,
+                              sp_str_t types,
+                              sp_str_t single_comments,
+                              sp_str_t multi_comment_pairs,
+                              sp_str_t string_delims,
+                              sp_str_t identifier_extras,
+                              sp_str_t number_mode,
+                              c8 escape_char,
+                              bool multi_line_strings,
+                              syntax_conflict_policy_t policy);
+bool syntax_has_language(sp_str_t name);
+sp_str_t syntax_list_languages(void);
 void syntax_highlight_line(line_t *line, language_t *lang);
 void syntax_highlight_buffer(buffer_t *buf);
 c8* syntax_color_to_ansi(highlight_type_t type);
+
+// treesitter.c
+void treesitter_init(void);
+bool treesitter_set_enabled(bool enable, sp_str_t *reason);
+bool treesitter_is_enabled(void);
+bool treesitter_is_available(void);
+sp_str_t treesitter_status(void);
+bool treesitter_highlight_buffer(buffer_t *buf);
 
 // search.c
 void search_init(void);
@@ -230,6 +268,16 @@ void command_init(void);
 void command_handle_input(c8 c);
 void command_execute(sp_str_t cmd);
 void command_show_prompt(void);
+bool command_register_js(sp_str_t name, sp_str_t code);
+
+// ext.c
+void ext_init(void);
+bool ext_eval(sp_str_t code, sp_str_t *output, sp_str_t *error);
+bool ext_run_file(sp_str_t path, sp_str_t *output, sp_str_t *error);
+u32 ext_autoload_plugins(sp_str_t *last_error);
+sp_str_t ext_list_loaded_plugins(void);
+bool ext_invoke_registered_command(sp_str_t code, sp_str_t arg, sp_str_t *output, sp_str_t *error);
+bool ext_invoke_operator_target(sp_str_t code, c8 op, sp_str_t seq, u32 count, u32 row, u32 col, sp_str_t *output, sp_str_t *error);
 
 // undo.c
 void undo_init(undo_stack_t *stack);
@@ -248,6 +296,9 @@ int input_read_key(void);
 bool input_read_escape_sequence(c8 *seq, u32 *len);
 void input_process(c8 c);
 void input_handle_normal(int c);
+void input_handle_operator_pending(int c);
+bool input_register_operator_target(sp_str_t seq, sp_str_t code);
+sp_str_t input_list_operator_targets(void);
 void input_handle_insert(int c);
 void input_handle_command(int c);
 void input_handle_search(int c);

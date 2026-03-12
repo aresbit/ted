@@ -28,6 +28,8 @@ void editor_init(void) {
     undo_init(&E.undo);
     undo_init(&E.redo);
     search_init();
+    ext_init();
+    treesitter_init();
     E.clipboard = sp_str_lit("");
 
     // Default configuration
@@ -39,11 +41,22 @@ void editor_init(void) {
 
     E.mode = MODE_NORMAL;
     E.has_selection = false;
+    E.command_hint = sp_str_lit("");
+
+    // Auto-load user plugins from ~/.ted/plugins/*.js
+    sp_str_t plugin_error = sp_str_lit("");
+    u32 plugin_count = ext_autoload_plugins(&plugin_error);
 
     // Initialize display (this sets up raw mode)
     display_init();
 
-    editor_set_message("TED v" TED_VERSION " - Press i to insert, :q to quit");
+    if (plugin_error.len > 0) {
+        editor_set_message("TED v" TED_VERSION " | plugin error: %.*s", (int)plugin_error.len, plugin_error.data);
+    } else if (plugin_count > 0) {
+        editor_set_message("TED v" TED_VERSION " | loaded %u plugin(s)", plugin_count);
+    } else {
+        editor_set_message("TED v" TED_VERSION " - Press i to insert, :q to quit");
+    }
 }
 
 void editor_open(sp_str_t filename) {
@@ -638,6 +651,9 @@ void editor_process_keypress(void) {
     switch (E.mode) {
         case MODE_NORMAL:
             input_handle_normal(c);
+            break;
+        case MODE_OPERATOR_PENDING:
+            input_handle_operator_pending(c);
             break;
         case MODE_INSERT:
             input_handle_insert(c);

@@ -5,6 +5,7 @@
 
 #include "ted.h"
 #include <ctype.h>
+#include <string.h>
 
 // C/C++ keywords
 static const c8 *c_keywords[] = {
@@ -64,59 +65,248 @@ typedef struct {
     sp_str_t name;
     const c8 **keywords;
     const c8 **types;
-    const c8 *single_comment;
-    const c8 *multi_start;
-    const c8 *multi_end;
-    c8 string_delim;
+    const c8 **single_comments;
+    const c8 **multi_comment_pairs;
+    const c8 *string_delims;
+    const c8 *identifier_extras;
+    const c8 *number_mode;
+    c8 escape_char;
+    bool multi_line_strings;
 } syntax_def_t;
+
+typedef struct {
+    bool used;
+    language_t lang;
+    syntax_def_t def;
+} runtime_syntax_t;
+
+#define RUNTIME_SYNTAX_CAP 32
+static runtime_syntax_t G_runtime_syntax[RUNTIME_SYNTAX_CAP];
+
+static const c8 *c_single_comments[] = { "//", NULL };
+static const c8 *py_single_comments[] = { "#", NULL };
+static const c8 *js_single_comments[] = { "//", NULL };
+static const c8 *sh_single_comments[] = { "#", NULL };
+static const c8 *c_multi_pairs[] = { "/*", "*/", NULL };
+static const c8 *py_multi_pairs[] = { "\"\"\"", "\"\"\"", NULL };
+static const c8 *js_multi_pairs[] = { "/*", "*/", NULL };
 
 static syntax_def_t syntax_defs[] = {
     {
         .name = SP_LIT("c"),
         .keywords = c_keywords,
         .types = c_types,
-        .single_comment = "//",
-        .multi_start = "/*",
-        .multi_end = "*/",
-        .string_delim = '"'
+        .single_comments = c_single_comments,
+        .multi_comment_pairs = c_multi_pairs,
+        .string_delims = "\"'",
+        .identifier_extras = "",
+        .number_mode = "c-like",
+        .escape_char = '\\',
+        .multi_line_strings = false
     },
     {
         .name = SP_LIT("python"),
         .keywords = python_keywords,
         .types = NULL,
-        .single_comment = "#",
-        .multi_start = "\"\"\"",
-        .multi_end = "\"\"\"",
-        .string_delim = '"'
+        .single_comments = py_single_comments,
+        .multi_comment_pairs = py_multi_pairs,
+        .string_delims = "\"'",
+        .identifier_extras = "",
+        .number_mode = "strict",
+        .escape_char = '\\',
+        .multi_line_strings = false
     },
     {
         .name = SP_LIT("javascript"),
         .keywords = js_keywords,
         .types = NULL,
-        .single_comment = "//",
-        .multi_start = "/*",
-        .multi_end = "*/",
-        .string_delim = '"'
+        .single_comments = js_single_comments,
+        .multi_comment_pairs = js_multi_pairs,
+        .string_delims = "\"'",
+        .identifier_extras = "$",
+        .number_mode = "c-like",
+        .escape_char = '\\',
+        .multi_line_strings = false
     },
     {
         .name = SP_LIT("shell"),
         .keywords = sh_keywords,
         .types = NULL,
-        .single_comment = "#",
-        .multi_start = NULL,
-        .multi_end = NULL,
-        .string_delim = '"'
+        .single_comments = sh_single_comments,
+        .multi_comment_pairs = NULL,
+        .string_delims = "\"'",
+        .identifier_extras = "",
+        .number_mode = "strict",
+        .escape_char = '\\',
+        .multi_line_strings = false
     },
     {
         .name = SP_LIT("text"),
         .keywords = NULL,
         .types = NULL,
-        .single_comment = NULL,
-        .multi_start = NULL,
-        .multi_end = NULL,
-        .string_delim = 0
+        .single_comments = NULL,
+        .multi_comment_pairs = NULL,
+        .string_delims = NULL,
+        .identifier_extras = "",
+        .number_mode = "strict",
+        .escape_char = '\\',
+        .multi_line_strings = false
     }
 };
+
+static bool str_eq_icase(sp_str_t a, sp_str_t b) {
+    if (a.len != b.len) return false;
+    for (u32 i = 0; i < a.len; i++) {
+        if (tolower((unsigned char)a.data[i]) != tolower((unsigned char)b.data[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static c8 *copy_cstr(sp_str_t s) {
+    if (s.len == 0) return NULL;
+    c8 *buf = sp_alloc_n(c8, s.len + 1);
+    if (!buf) return NULL;
+    memcpy(buf, s.data, s.len);
+    buf[s.len] = '\0';
+    return buf;
+}
+
+static bool is_word_sep(c8 c) {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == ',';
+}
+
+static c8 **parse_word_list(sp_str_t words) {
+    u32 count = 0;
+    u32 i = 0;
+    while (i < words.len) {
+        while (i < words.len && is_word_sep(words.data[i])) i++;
+        if (i >= words.len) break;
+        count++;
+        while (i < words.len && !is_word_sep(words.data[i])) i++;
+    }
+
+    if (count == 0) return NULL;
+
+    c8 **list = sp_alloc_n(c8 *, count + 1);
+    if (!list) return NULL;
+
+    u32 index = 0;
+    i = 0;
+    while (i < words.len && index < count) {
+        while (i < words.len && is_word_sep(words.data[i])) i++;
+        if (i >= words.len) break;
+        u32 start = i;
+        while (i < words.len && !is_word_sep(words.data[i])) i++;
+        u32 len = i - start;
+        c8 *item = sp_alloc_n(c8, len + 1);
+        if (!item) break;
+        memcpy(item, words.data + start, len);
+        item[len] = '\0';
+        list[index++] = item;
+    }
+    list[index] = NULL;
+    return list;
+}
+
+static bool word_list_has_even_count(const c8 **list) {
+    if (!list) return true;
+    u32 count = 0;
+    while (list[count]) count++;
+    return (count % 2) == 0;
+}
+
+static bool extension_list_matches(sp_str_t extensions, sp_str_t ext) {
+    if (ext.len == 0) return false;
+    u32 i = 0;
+    while (i < extensions.len) {
+        while (i < extensions.len && is_word_sep(extensions.data[i])) i++;
+        if (i >= extensions.len) break;
+        u32 start = i;
+        while (i < extensions.len && !is_word_sep(extensions.data[i])) i++;
+        sp_str_t token = sp_str_sub(extensions, (s32)start, (s32)(i - start));
+        if (str_eq_icase(token, ext)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static runtime_syntax_t *find_runtime_by_name(sp_str_t name) {
+    for (u32 i = 0; i < RUNTIME_SYNTAX_CAP; i++) {
+        if (!G_runtime_syntax[i].used) continue;
+        if (str_eq_icase(G_runtime_syntax[i].lang.name, name)) {
+            return &G_runtime_syntax[i];
+        }
+    }
+    return NULL;
+}
+
+static bool has_builtin_language(sp_str_t name) {
+    for (u32 i = 0; i < sizeof(syntax_defs) / sizeof(syntax_defs[0]); i++) {
+        if (str_eq_icase(syntax_defs[i].name, name)) return true;
+    }
+    return false;
+}
+
+bool syntax_has_language(sp_str_t name) {
+    if (name.len == 0) return false;
+    if (has_builtin_language(name)) return true;
+    return find_runtime_by_name(name) != NULL;
+}
+
+sp_str_t syntax_list_languages(void) {
+    sp_str_t names[64];
+    u32 count = 0;
+
+    for (u32 i = 0; i < sizeof(syntax_defs) / sizeof(syntax_defs[0]); i++) {
+        if (count >= 64) break;
+        names[count++] = syntax_defs[i].name;
+    }
+
+    for (u32 i = 0; i < RUNTIME_SYNTAX_CAP; i++) {
+        if (!G_runtime_syntax[i].used) continue;
+        bool exists = false;
+        for (u32 j = 0; j < count; j++) {
+            if (str_eq_icase(names[j], G_runtime_syntax[i].lang.name)) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists && count < 64) {
+            names[count++] = G_runtime_syntax[i].lang.name;
+        }
+    }
+
+    sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
+    sp_str_builder_t b = sp_str_builder_from_writer(&writer);
+    for (u32 i = 0; i < count; i++) {
+        if (i > 0) sp_str_builder_append_cstr(&b, ", ");
+        sp_str_builder_append(&b, names[i]);
+    }
+    return sp_str_builder_to_str(&b);
+}
+
+static syntax_def_t *find_syntax_def(language_t *lang) {
+    if (!lang) return NULL;
+
+    runtime_syntax_t *rt = find_runtime_by_name(lang->name);
+    if (rt) {
+        return &rt->def;
+    }
+
+    for (u32 i = 0; i < sizeof(syntax_defs) / sizeof(syntax_defs[0]); i++) {
+        if (sp_str_equal(syntax_defs[i].name, lang->name) ||
+            (lang->name.len > 0 && syntax_defs[i].name.len > 0 &&
+             lang->name.data && syntax_defs[i].name.data &&
+             tolower((unsigned char)lang->name.data[0]) == tolower((unsigned char)syntax_defs[i].name.data[0]))) {
+            return &syntax_defs[i];
+        }
+    }
+
+    return &syntax_defs[4];
+}
 
 static bool is_keyword(const c8 **keywords, sp_str_t word) {
     if (!keywords) return false;
@@ -134,6 +324,66 @@ void syntax_init(void) {
     // Syntax definitions are statically initialized
 }
 
+bool syntax_register_language(sp_str_t name,
+                              sp_str_t extensions,
+                              sp_str_t keywords,
+                              sp_str_t types,
+                              sp_str_t single_comments,
+                              sp_str_t multi_comment_pairs,
+                              sp_str_t string_delims,
+                              sp_str_t identifier_extras,
+                              sp_str_t number_mode,
+                              c8 escape_char,
+                              bool multi_line_strings,
+                              syntax_conflict_policy_t policy) {
+    if (name.len == 0 || extensions.len == 0) return false;
+
+    runtime_syntax_t *slot = find_runtime_by_name(name);
+    bool exists = (slot != NULL) || has_builtin_language(name);
+    if (exists && policy == SYNTAX_CONFLICT_SKIP) return true;
+    if (exists && policy == SYNTAX_CONFLICT_ERROR) return false;
+
+    if (!slot) {
+        for (u32 i = 0; i < RUNTIME_SYNTAX_CAP; i++) {
+            if (G_runtime_syntax[i].used) continue;
+            slot = &G_runtime_syntax[i];
+            break;
+        }
+    }
+    if (!slot) return false;
+
+    slot->used = true;
+    slot->lang.name = sp_str_copy(name);
+    slot->lang.extensions = sp_str_copy(extensions);
+    slot->lang.keywords = NULL;
+    slot->lang.keyword_count = 0;
+    slot->lang.single_comment = sp_str_copy(single_comments);
+    slot->lang.multi_comment_start = sp_str_lit("");
+    slot->lang.multi_comment_end = sp_str_lit("");
+    slot->lang.string_delim = string_delims.len > 0 ? string_delims.data[0] : 0;
+
+    slot->def.name = slot->lang.name;
+    slot->def.keywords = (const c8 **)parse_word_list(keywords);
+    slot->def.types = (const c8 **)parse_word_list(types);
+    slot->def.single_comments = (const c8 **)parse_word_list(single_comments);
+    slot->def.multi_comment_pairs = (const c8 **)parse_word_list(multi_comment_pairs);
+    if (slot->def.multi_comment_pairs && !word_list_has_even_count(slot->def.multi_comment_pairs)) {
+        return false;
+    }
+    if (slot->def.multi_comment_pairs && slot->def.multi_comment_pairs[0]) {
+        slot->lang.multi_comment_start = sp_str_from_cstr(slot->def.multi_comment_pairs[0]);
+    }
+    if (slot->def.multi_comment_pairs && slot->def.multi_comment_pairs[1]) {
+        slot->lang.multi_comment_end = sp_str_from_cstr(slot->def.multi_comment_pairs[1]);
+    }
+    slot->def.string_delims = copy_cstr(string_delims);
+    slot->def.identifier_extras = copy_cstr(identifier_extras);
+    slot->def.number_mode = copy_cstr(number_mode);
+    slot->def.escape_char = escape_char;
+    slot->def.multi_line_strings = multi_line_strings;
+    return true;
+}
+
 language_t* syntax_detect_language(sp_str_t filename) {
     // Find file extension
     sp_str_t ext = sp_str_lit("");
@@ -143,6 +393,14 @@ language_t* syntax_detect_language(sp_str_t filename) {
             break;
         }
         if (filename.data[i] == '/') break; // Stop at directory separator
+    }
+
+    // JS-registered language mappings override builtin defaults.
+    for (u32 i = 0; i < RUNTIME_SYNTAX_CAP; i++) {
+        if (!G_runtime_syntax[i].used) continue;
+        if (extension_list_matches(G_runtime_syntax[i].lang.extensions, ext)) {
+            return &G_runtime_syntax[i].lang;
+        }
     }
 
     // Map extension to language
@@ -237,7 +495,158 @@ language_t* syntax_detect_language(sp_str_t filename) {
     return &text_lang;
 }
 
-void syntax_highlight_line(line_t *line, language_t *lang) {
+static bool str_eq_cstr_ci(const c8 *a, const c8 *b) {
+    if (!a || !b) return false;
+    while (*a && *b) {
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) return false;
+        a++;
+        b++;
+    }
+    return *a == '\0' && *b == '\0';
+}
+
+static bool is_identifier_char(const syntax_def_t *def, c8 c) {
+    if (isalnum((unsigned char)c) || c == '_') return true;
+    if (!def || !def->identifier_extras) return false;
+    for (u32 i = 0; def->identifier_extras[i] != '\0'; i++) {
+        if (def->identifier_extras[i] == c) return true;
+    }
+    return false;
+}
+
+static bool is_identifier_start(const syntax_def_t *def, c8 c) {
+    if (isalpha((unsigned char)c) || c == '_') return true;
+    if (!def || !def->identifier_extras) return false;
+    for (u32 i = 0; def->identifier_extras[i] != '\0'; i++) {
+        if (def->identifier_extras[i] == c) return true;
+    }
+    return false;
+}
+
+static bool is_string_delim_char(const syntax_def_t *def, c8 c) {
+    if (!def || !def->string_delims || def->string_delims[0] == '\0') return false;
+    for (u32 i = 0; def->string_delims[i] != '\0'; i++) {
+        if (def->string_delims[i] == c) return true;
+    }
+    return false;
+}
+
+static bool match_token_at(sp_str_t text, u32 at, const c8 *token, u32 *token_len_out) {
+    if (!token) return false;
+    u32 len = (u32)strlen(token);
+    if (len == 0 || at + len > text.len) return false;
+    if (memcmp(text.data + at, token, len) != 0) return false;
+    if (token_len_out) *token_len_out = len;
+    return true;
+}
+
+static bool match_any_token_at(sp_str_t text, u32 at, const c8 **tokens, u32 *token_len_out) {
+    if (!tokens) return false;
+    for (u32 i = 0; tokens[i]; i++) {
+        u32 len = 0;
+        if (!match_token_at(text, at, tokens[i], &len)) continue;
+        if (token_len_out) *token_len_out = len;
+        return true;
+    }
+    return false;
+}
+
+static bool has_multi_pairs(const syntax_def_t *def) {
+    return def && def->multi_comment_pairs && def->multi_comment_pairs[0] &&
+           def->multi_comment_pairs[1];
+}
+
+static bool match_multi_start_at(const syntax_def_t *def, sp_str_t text, u32 at, u32 *pair_index, u32 *start_len) {
+    if (!has_multi_pairs(def)) return false;
+    for (u32 i = 0; def->multi_comment_pairs[i] && def->multi_comment_pairs[i + 1]; i += 2) {
+        u32 len = 0;
+        if (!match_token_at(text, at, def->multi_comment_pairs[i], &len)) continue;
+        if (pair_index) *pair_index = i / 2;
+        if (start_len) *start_len = len;
+        return true;
+    }
+    return false;
+}
+
+static const c8 *multi_end_token(const syntax_def_t *def, u32 pair_index, u32 *end_len) {
+    if (!has_multi_pairs(def)) return NULL;
+    u32 i = pair_index * 2 + 1;
+    if (!def->multi_comment_pairs[i]) return NULL;
+    if (end_len) *end_len = (u32)strlen(def->multi_comment_pairs[i]);
+    return def->multi_comment_pairs[i];
+}
+
+typedef struct {
+    bool in_multiline_comment;
+    u32 multi_pair_index;
+    bool in_string;
+    c8 string_delim;
+} syntax_line_state_t;
+
+typedef enum {
+    TOKEN_STATE_NORMAL = 0,
+    TOKEN_STATE_NUMBER,
+} token_state_t;
+
+static void highlight_span(line_t *line, u32 start, u32 end, highlight_type_t type) {
+    for (u32 j = start; j < end; j++) {
+        line->hl[j] = type;
+    }
+}
+
+static bool is_number_start(const syntax_def_t *def, sp_str_t text, u32 i) {
+    c8 c = text.data[i];
+    c8 prev = (i > 0) ? text.data[i - 1] : ' ';
+    if ((c >= '0' && c <= '9') && !is_identifier_char(def, prev)) return true;
+    if (c == '.' && i + 1 < text.len &&
+        text.data[i + 1] >= '0' && text.data[i + 1] <= '9' &&
+        !is_identifier_char(def, prev)) {
+        return true;
+    }
+    return false;
+}
+
+static bool is_number_char(const syntax_def_t *def, c8 c) {
+    bool strict = def && def->number_mode && str_eq_cstr_ci(def->number_mode, "strict");
+    if (strict) {
+        return isdigit((unsigned char)c) || c == '.' || c == '_';
+    }
+    return isdigit((unsigned char)c) || c == '.' || c == '_' ||
+           c == 'x' || c == 'X' || c == 'e' || c == 'E' ||
+           c == 'a' || c == 'A' || c == 'b' || c == 'B' ||
+           c == 'c' || c == 'C' || c == 'd' || c == 'D' ||
+           c == 'f' || c == 'F' || c == 'u' || c == 'U' ||
+           c == 'l' || c == 'L' || c == '+' || c == '-';
+}
+
+static u32 consume_identifier(line_t *line, const syntax_def_t *def, u32 start) {
+    u32 i = start;
+    while (i < line->text.len && is_identifier_char(def, line->text.data[i])) {
+        i++;
+    }
+
+    sp_str_t word = sp_str_sub(line->text, (s32)start, (s32)(i - start));
+    if (is_keyword(def->keywords, word)) {
+        highlight_span(line, start, i, HL_KEYWORD);
+    } else if (def->types && is_keyword(def->types, word)) {
+        highlight_span(line, start, i, HL_TYPE);
+    } else if (i < line->text.len && line->text.data[i] == '(') {
+        highlight_span(line, start, i, HL_FUNCTION);
+    } else {
+        highlight_span(line, start, i, HL_NORMAL);
+    }
+    return i;
+}
+
+static void save_line_state(syntax_line_state_t *state, bool in_ml, u32 ml_pair_index, bool in_string, c8 string_delim) {
+    if (!state) return;
+    state->in_multiline_comment = in_ml;
+    state->multi_pair_index = ml_pair_index;
+    state->in_string = in_string;
+    state->string_delim = string_delim;
+}
+
+static void syntax_highlight_line_impl(line_t *line, language_t *lang, syntax_line_state_t *state) {
     if (!line || !lang) return;
     if (!line->text.data && line->text.len > 0) return;
 
@@ -264,140 +673,118 @@ void syntax_highlight_line(line_t *line, language_t *lang) {
         line->hl[i] = HL_NORMAL;
     }
 
-    // Find matching syntax definition
-    syntax_def_t *def = &syntax_defs[4]; // Default to text
-    for (u32 i = 0; i < sizeof(syntax_defs) / sizeof(syntax_defs[0]); i++) {
-        if (sp_str_equal(syntax_defs[i].name, lang->name) ||
-            (lang->name.len > 0 && syntax_defs[i].name.len > 0 &&
-             lang->name.data && syntax_defs[i].name.data &&
-             tolower(lang->name.data[0]) == tolower(syntax_defs[i].name.data[0]))) {
-            def = &syntax_defs[i];
-            break;
-        }
-    }
+    syntax_def_t *def = find_syntax_def(lang);
+    bool in_ml = state ? state->in_multiline_comment : false;
+    u32 ml_pair_index = state ? state->multi_pair_index : 0;
+    bool in_string = state ? state->in_string : false;
+    c8 open_string_delim = state ? state->string_delim : 0;
+    bool has_multi = has_multi_pairs(def);
+    bool has_single = def->single_comments && def->single_comments[0] != NULL;
 
-    // Simple state machine for highlighting
-    enum {
-        STATE_NORMAL,
-        STATE_STRING,
-        STATE_COMMENT,
-        STATE_NUMBER
-    } state = STATE_NORMAL;
+    token_state_t token_state = TOKEN_STATE_NORMAL;
 
-    c8 string_delim = 0;
+    c8 string_delim = open_string_delim;
 
-    for (u32 i = 0; i < line->text.len; i++) {
+    u32 i = 0;
+    while (i < line->text.len) {
         c8 c = line->text.data[i];
-        c8 prev = (i > 0) ? line->text.data[i - 1] : 0;
+        c8 prev = (i > 0) ? line->text.data[i - 1] : ' ';
 
-        switch (state) {
-            case STATE_NORMAL: {
-                // Check for string start
-                if (c == '"' || c == '\'') {
-                    state = STATE_STRING;
-                    string_delim = c;
-                    line->hl[i] = HL_STRING;
-                    break;
-                }
-
-                // Check for single-line comment
-                if (def->single_comment && c == def->single_comment[0]) {
-                    u32 clen = (u32)strlen(def->single_comment);
-                    if (clen > 0 && i + clen <= line->text.len) {
-                        bool match = true;
-                        for (u32 j = 0; j < clen; j++) {
-                            if (line->text.data[i + j] != def->single_comment[j]) {
-                                match = false;
-                                break;
-                            }
-                        }
-                        if (match) {
-                            // Comment to end of line
-                            for (u32 j = i; j < line->text.len; j++) {
-                                line->hl[j] = HL_COMMENT;
-                            }
-                            return;
-                        }
-                    }
-                }
-
-                // Check for number
-                if ((c >= '0' && c <= '9') ||
-                    (c == '.' && i + 1 < line->text.len &&
-                     line->text.data[i + 1] >= '0' && line->text.data[i + 1] <= '9')) {
-                    state = STATE_NUMBER;
-                    line->hl[i] = HL_NUMBER;
-                    break;
-                }
-
-                // Check for keyword
-                if (isalpha((unsigned char)c) || c == '_') {
-                    // Find word boundaries
-                    u32 start = i;
-                    while (i < line->text.len &&
-                           (isalnum((unsigned char)line->text.data[i]) || line->text.data[i] == '_')) {
-                        i++;
-                    }
-                    sp_str_t word = sp_str_sub(line->text, (s32)start, (s32)(i - start));
-
-                    if (is_keyword(def->keywords, word)) {
-                        for (u32 j = start; j < i; j++) {
-                            line->hl[j] = HL_KEYWORD;
-                        }
-                    } else if (def->types && is_keyword(def->types, word)) {
-                        for (u32 j = start; j < i; j++) {
-                            line->hl[j] = HL_TYPE;
-                        }
-                    } else {
-                        for (u32 j = start; j < i; j++) {
-                            line->hl[j] = HL_NORMAL;
-                        }
-                    }
-                    i--; // Compensate for loop increment
-                    break;
-                }
-
-                line->hl[i] = HL_NORMAL;
-                break;
+        if (in_string) {
+            line->hl[i] = HL_STRING;
+            if (c == string_delim && prev != def->escape_char) {
+                in_string = false;
+                string_delim = 0;
             }
-
-            case STATE_STRING: {
-                line->hl[i] = HL_STRING;
-                // Check for string end (handle escape sequences)
-                if (c == string_delim && prev != '\\') {
-                    state = STATE_NORMAL;
-                }
-                break;
-            }
-
-            case STATE_NUMBER: {
-                if (isdigit((unsigned char)c) || c == '.' || c == 'x' || c == 'X' ||
-                    c == 'a' || c == 'A' || c == 'b' || c == 'B' ||
-                    c == 'c' || c == 'C' || c == 'e' || c == 'E' ||
-                    c == 'f' || c == 'F' || c == 'u' || c == 'U' ||
-                    c == 'l' || c == 'L') {
-                    line->hl[i] = HL_NUMBER;
-                } else {
-                    state = STATE_NORMAL;
-                    i--; // Re-process this character in normal state
-                }
-                break;
-            }
-
-            default:
-                line->hl[i] = HL_NORMAL;
-                break;
+            i++;
+            continue;
         }
+
+        if (in_ml) {
+            line->hl[i] = HL_COMMENT;
+            u32 ml_end_len = 0;
+            const c8 *ml_end = multi_end_token(def, ml_pair_index, &ml_end_len);
+            if (ml_end && match_token_at(line->text, i, ml_end, NULL)) {
+                highlight_span(line, i, SP_MIN(i + ml_end_len, line->text.len), HL_COMMENT);
+                i += ml_end_len;
+                in_ml = false;
+            } else {
+                i++;
+            }
+            continue;
+        }
+
+        if (token_state == TOKEN_STATE_NUMBER) {
+            if (is_number_char(def, c)) {
+                line->hl[i] = HL_NUMBER;
+                i++;
+                continue;
+            }
+            token_state = TOKEN_STATE_NORMAL;
+            continue; // re-process current character in normal mode
+        }
+
+        u32 ml_start_len = 0;
+        u32 start_pair_index = 0;
+        if (has_multi && match_multi_start_at(def, line->text, i, &start_pair_index, &ml_start_len)) {
+            highlight_span(line, i, SP_MIN(i + ml_start_len, line->text.len), HL_COMMENT);
+            i += ml_start_len;
+            in_ml = true;
+            ml_pair_index = start_pair_index;
+            continue;
+        }
+
+        if (has_single && match_any_token_at(line->text, i, def->single_comments, NULL)) {
+            highlight_span(line, i, line->text.len, HL_COMMENT);
+            save_line_state(state, in_ml, ml_pair_index, in_string, string_delim);
+            return;
+        }
+
+        if (is_string_delim_char(def, c)) {
+            line->hl[i] = HL_STRING;
+            string_delim = c;
+            in_string = true;
+            i++;
+            continue;
+        }
+
+        if (is_number_start(def, line->text, i)) {
+            line->hl[i] = HL_NUMBER;
+            token_state = TOKEN_STATE_NUMBER;
+            i++;
+            continue;
+        }
+
+        if (is_identifier_start(def, c)) {
+            i = consume_identifier(line, def, i);
+            continue;
+        }
+
+        line->hl[i] = HL_NORMAL;
+        i++;
     }
+
+    if (!def->multi_line_strings && in_string) {
+        in_string = false;
+        string_delim = 0;
+    }
+
+    save_line_state(state, in_ml, ml_pair_index, in_string, string_delim);
+}
+
+void syntax_highlight_line(line_t *line, language_t *lang) {
+    syntax_line_state_t state = {0};
+    syntax_highlight_line_impl(line, lang, &state);
 }
 
 void syntax_highlight_buffer(buffer_t *buf) {
     if (!buf) return;
 
     language_t *lang = syntax_detect_language(buf->filename);
+    syntax_line_state_t state = {0};
 
     for (u32 i = 0; i < buf->line_count; i++) {
-        syntax_highlight_line(&buf->lines[i], lang);
+        syntax_highlight_line_impl(&buf->lines[i], lang, &state);
         buf->lines[i].hl_dirty = false;
     }
 }
