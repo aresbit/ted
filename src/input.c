@@ -21,6 +21,7 @@ typedef enum {
     COMP_SCOPE_CMD,
     COMP_SCOPE_SET,
     COMP_SCOPE_SYNTAX,
+    COMP_SCOPE_THEME,
 } completion_scope_t;
 
 typedef struct {
@@ -39,12 +40,13 @@ static const c8 *CMD_CANDIDATES[] = {
     "w", "write", "q", "quit", "wq", "q!", "goto", "g",
     "set", "syntax", "e", "edit", "e!", "edit!", "help", "h",
     "agent", "llm", "llmshow", "llmcopy", "llmstatus",
-    "js", "source", "plugins", "langs", "targets"
+    "js", "source", "plugins", "langs", "targets", "theme"
 };
 static const c8 *SET_CANDIDATES[] = {
     "nu", "number", "nonu", "nonumber", "syntax", "nosyntax", "wrap", "nowrap"
 };
 static const c8 *SYNTAX_CANDIDATES[] = { "on", "off", "tree", "tree on", "tree off", "tree status" };
+static const c8 *THEME_CANDIDATES[] = { "cyber", "warm", "night" };
 
 typedef struct {
     sp_str_t seq;
@@ -191,6 +193,15 @@ static bool completion_resolve_context(
         *candidate_count = sizeof(SYNTAX_CANDIDATES) / sizeof(SYNTAX_CANDIDATES[0]);
         *before = sp_str_lit("syntax ");
         *token = sp_str_sub(buf, 7, (s32)(buf.len - 7));
+        return true;
+    }
+
+    if (str_has_prefix(buf, "theme ")) {
+        *scope = COMP_SCOPE_THEME;
+        *candidates = THEME_CANDIDATES;
+        *candidate_count = sizeof(THEME_CANDIDATES) / sizeof(THEME_CANDIDATES[0]);
+        *before = sp_str_lit("theme ");
+        *token = sp_str_sub(buf, 6, (s32)(buf.len - 6));
         return true;
     }
 
@@ -415,6 +426,37 @@ int input_read_key(void) {
 
             // Null-terminate for easier debugging (not strictly needed)
             seq[seq_len] = '\0';
+
+            // Parse SGR mouse event: ESC [ < b ; x ; y (M/m)
+            // b=button, x/y are 1-based terminal coordinates
+            if (seq_len >= 6 && seq[1] == '<' &&
+                (seq[seq_len - 1] == 'M' || seq[seq_len - 1] == 'm')) {
+                u32 i = 2;
+                u32 b = 0, x = 0, y = 0;
+                while (i < seq_len && seq[i] >= '0' && seq[i] <= '9') {
+                    b = b * 10 + (u32)(seq[i] - '0');
+                    i++;
+                }
+                if (i < seq_len && seq[i] == ';') i++;
+                while (i < seq_len && seq[i] >= '0' && seq[i] <= '9') {
+                    x = x * 10 + (u32)(seq[i] - '0');
+                    i++;
+                }
+                if (i < seq_len && seq[i] == ';') i++;
+                while (i < seq_len && seq[i] >= '0' && seq[i] <= '9') {
+                    y = y * 10 + (u32)(seq[i] - '0');
+                    i++;
+                }
+
+                bool is_press = seq[seq_len - 1] == 'M';
+                bool left_button = ((b & 0x3) == 0);
+                if (left_button && x > 0 && y > 0) {
+                    if (iui_tui_handle_mouse(x, y, is_press)) {
+                        return 0;
+                    }
+                }
+                return 0;
+            }
 
             // Parse the sequence
             // Format can be:

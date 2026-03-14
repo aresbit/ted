@@ -646,6 +646,7 @@ void editor_process_keypress(void) {
     int c = input_read_key();
 
     if (c == 0) return;
+    if (iui_tui_handle_key(c)) return;
 
     // Handle mode-specific input
     switch (E.mode) {

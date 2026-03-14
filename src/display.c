@@ -4,37 +4,50 @@
  */
 
 #include "ted.h"
+#include "cui.h"
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <string.h>
 
 #define ESC "\033["
 
-// ANSI color codes
-#define COLOR_RESET      "\033[0m"
-#define COLOR_KEYWORD    "\033[1;34m"   // Bold blue
-#define COLOR_STRING     "\033[32m"     // Green  
-#define COLOR_COMMENT    "\033[90m"     // Gray
-#define COLOR_NUMBER     "\033[33m"     // Yellow
-#define COLOR_FUNCTION   "\033[35m"     // Magenta
-#define COLOR_TYPE       "\033[36m"     // Cyan
-#define COLOR_STATUS     "\033[44;37m"  // Blue bg, white fg
-#define COLOR_MESSAGE    "\033[1;37m"   // Bold white
-
 static struct termios orig_termios;
 static sp_io_writer_t stdout_writer;
+static const cui_theme_t *CUI;
 
 static const c8* display_context_hint(void) {
     if (E.mode != MODE_NORMAL) return "";
     if (E.buffer.modified) {
-        return "Hint: Unsaved changes, press Ctrl+S to save.";
+        return "Unsaved changes. Press Ctrl+S to save.";
     }
     if (E.buffer.filename.len == 0 || sp_str_equal(E.buffer.filename, sp_str_lit("[No Name]"))) {
-        return "Hint: :w <file> to save as, / to search, i to start editing.";
+        return "i to start typing, :w <file> to save, / to search.";
     }
-    return "Hint: i edit, / search, :help commands, ? quick tips.";
+    return "i edit, / search, :help for commands.";
+}
+
+static bool display_show_empty_state(void) {
+    if (E.mode != MODE_NORMAL) return false;
+    if (E.buffer.line_count != 1) return false;
+    if (E.buffer.lines[0].text.len != 0) return false;
+    return (E.buffer.filename.len == 0 ||
+            sp_str_equal(E.buffer.filename, sp_str_lit("[No Name]")));
+}
+
+static void display_draw_centered(u32 row, const c8 *text, const c8 *style) {
+    u32 len = (u32)strlen(text);
+    u32 col = len < E.screen_cols ? (E.screen_cols - len) / 2 : 0;
+    display_set_cursor(row, col);
+    if (style) {
+        sp_io_write_cstr(&stdout_writer, style);
+    }
+    sp_io_write_cstr(&stdout_writer, text);
+    if (style) {
+        sp_io_write_cstr(&stdout_writer, CUI->reset);
+    }
 }
 
 // Check if a character at (file_row, file_col) is within selection
@@ -73,6 +86,7 @@ static bool is_selected(u32 file_row, u32 file_col) {
 
 // Restore terminal on exit
 static void cleanup_terminal(void) {
+    iui_tui_shutdown();
     // Restore terminal settings
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
 
@@ -80,6 +94,8 @@ static void cleanup_terminal(void) {
     sp_io_writer_t out = sp_io_writer_from_fd(STDOUT_FILENO, SP_IO_CLOSE_MODE_NONE);
     sp_io_write_cstr(&out, ESC "2J");
     sp_io_write_cstr(&out, ESC "H");
+    sp_io_write_cstr(&out, ESC "?1000l");
+    sp_io_write_cstr(&out, ESC "?1006l");
     sp_io_write_cstr(&out, ESC "?25h"); // Show cursor
     sp_io_flush(&out);
 }
@@ -122,6 +138,7 @@ u32 display_get_screen_cols(void) {
 void display_init(void) {
     // Initialize stdout writer
     stdout_writer = sp_io_writer_from_fd(STDOUT_FILENO, SP_IO_CLOSE_MODE_NONE);
+    CUI = cui_theme_jobs();
 
     // Check if stdin is a terminal
     if (!isatty(STDIN_FILENO)) {
@@ -150,9 +167,16 @@ void display_init(void) {
         die("tcsetattr");
     }
 
+    // Enable mouse reporting (button press/release + SGR coords)
+    sp_io_write_cstr(&stdout_writer, ESC "?1000h");
+    sp_io_write_cstr(&stdout_writer, ESC "?1006h");
+
     // Get screen size
-    E.screen_rows = display_get_screen_rows() - 2; // Reserve for status bars
+    u32 reserved_rows = iui_tui_panel_rows() + 1; // toolbar + message bar
+    u32 total_rows = display_get_screen_rows();
+    E.screen_rows = total_rows > reserved_rows ? total_rows - reserved_rows : 1;
     E.screen_cols = display_get_screen_cols();
+    iui_tui_init(E.screen_cols, iui_tui_panel_rows());
 
     // Clear screen initially
     display_clear();
@@ -189,9 +213,9 @@ void display_draw_rows(void) {
             // Draw line number
             if (E.config.show_line_numbers) {
                 sp_str_t num = sp_format("{:pad 4} ", SP_FMT_U32(file_row + 1));
-                sp_io_write_cstr(&stdout_writer, "\033[90m"); // Gray
+                sp_io_write_cstr(&stdout_writer, CUI->fg_muted);
                 sp_io_write_str(&stdout_writer, num);
-                sp_io_write_cstr(&stdout_writer, COLOR_RESET);
+                sp_io_write_cstr(&stdout_writer, CUI->reset);
             }
 
             // Get line content
@@ -253,67 +277,36 @@ void display_draw_rows(void) {
             }
 
             // Reset color at end of line
-            sp_io_write_cstr(&stdout_writer, COLOR_RESET);
+            sp_io_write_cstr(&stdout_writer, CUI->reset);
 
         } else {
-            // Empty line (past end of file)
-            sp_io_write_cstr(&stdout_writer, "\033[90m~\033[0m");
+            if (display_show_empty_state()) {
+                u32 hero_row = E.screen_rows / 2;
+                if (hero_row > 3 && y == hero_row - 2) {
+                    display_draw_centered(y, "TED", CUI->fg_accent);
+                } else if (hero_row > 2 && y == hero_row) {
+                    display_draw_centered(y, "Focus on what matters.", CUI->fg_text);
+                } else if (hero_row + 2 < E.screen_rows && y == hero_row + 2) {
+                    display_draw_centered(y, "i start typing   :help commands   Ctrl+S save", CUI->fg_muted);
+                }
+            } else {
+                sp_io_write_cstr(&stdout_writer, CUI->fg_muted);
+                sp_io_write_cstr(&stdout_writer, "~");
+                sp_io_write_cstr(&stdout_writer, CUI->reset);
+            }
         }
     }
 }
 
 void display_draw_status_bar(void) {
-    // Move to status bar position
-    display_set_cursor(E.screen_rows, 0);
-
-    // Set status bar color
-    sp_io_write_cstr(&stdout_writer, COLOR_STATUS);
-
-    // Build status string
-    sp_str_t filename = E.buffer.filename.len > 0 ? E.buffer.filename : sp_str_lit("[No Name]");
-    sp_str_t modified = E.buffer.modified ? sp_str_lit("[+]") : sp_str_lit("");
-
-    // Mode indicator
-    const c8 *mode_str;
-    switch (E.mode) {
-        case MODE_OPERATOR_PENDING: mode_str = "OP-PENDING"; break;
-        case MODE_INSERT: mode_str = "INSERT"; break;
-        case MODE_COMMAND: mode_str = "COMMAND"; break;
-        case MODE_SEARCH: mode_str = "SEARCH"; break;
-        case MODE_REPLACE: mode_str = "REPLACE"; break;
-        default: mode_str = "NORMAL"; break;
-    }
-
-    sp_str_t left = sp_format(" {}{} | Ln {}, Col {} ",
-        SP_FMT_STR(filename),
-        SP_FMT_STR(modified),
-        SP_FMT_U32(E.cursor.row + 1),
-        SP_FMT_U32(E.cursor.col + 1));
-
-    // Calculate right-aligned info
-    sp_str_t right = sp_format(" {} | {} | {} lines ",
-        SP_FMT_CSTR(mode_str),
-        SP_FMT_STR(E.buffer.lang),
-        SP_FMT_U32(E.buffer.line_count));
-
-    // Pad to fill screen
-    u32 total_len = left.len + right.len;
-    s32 padding = (s32)E.screen_cols - (s32)total_len;
-    if (padding < 0) padding = 0;
-
-    sp_io_write_str(&stdout_writer, left);
-    for (s32 i = 0; i < padding; i++) {
-        sp_io_write_cstr(&stdout_writer, " ");
-    }
-    sp_io_write_str(&stdout_writer, right);
-
-    // Reset color
-    sp_io_write_cstr(&stdout_writer, COLOR_RESET);
+    iui_tui_resize(E.screen_cols, iui_tui_panel_rows());
+    iui_tui_draw_toolbar();
+    iui_tui_blit(&stdout_writer, E.screen_rows);
 }
 
 void display_draw_message_bar(void) {
     // Move to message bar position
-    display_set_cursor(E.screen_rows + 1, 0);
+    display_set_cursor(E.screen_rows + iui_tui_panel_rows(), 0);
 
     // Clear line
     sp_io_write_cstr(&stdout_writer, ESC "K");
@@ -322,21 +315,27 @@ void display_draw_message_bar(void) {
     switch (E.mode) {
         case MODE_COMMAND: {
             sp_str_t msg = sp_format(":{}", SP_FMT_STR(E.command_buffer));
+            sp_io_write_cstr(&stdout_writer, CUI->fg_accent);
             sp_io_write_str(&stdout_writer, msg);
+            sp_io_write_cstr(&stdout_writer, CUI->reset);
             if (E.command_hint.len > 0) {
                 sp_io_write_cstr(&stdout_writer, "  | ");
-                sp_io_write_cstr(&stdout_writer, "\033[90m");
+                sp_io_write_cstr(&stdout_writer, CUI->fg_muted);
                 sp_io_write_str(&stdout_writer, E.command_hint);
-                sp_io_write_cstr(&stdout_writer, COLOR_RESET);
+                sp_io_write_cstr(&stdout_writer, CUI->reset);
             }
             break;
         }
         case MODE_SEARCH: {
             sp_str_t msg = sp_format("/{}", SP_FMT_STR(E.command_buffer));
+            sp_io_write_cstr(&stdout_writer, CUI->fg_accent);
             sp_io_write_str(&stdout_writer, msg);
+            sp_io_write_cstr(&stdout_writer, CUI->reset);
             if (E.search.match_count > 0) {
                 sp_str_t count = sp_format(" ({} matches)", SP_FMT_U32(E.search.match_count));
+                sp_io_write_cstr(&stdout_writer, CUI->fg_muted);
                 sp_io_write_str(&stdout_writer, count);
+                sp_io_write_cstr(&stdout_writer, CUI->reset);
             }
             break;
         }
@@ -344,30 +343,32 @@ void display_draw_message_bar(void) {
             sp_str_t msg = sp_format("Replace: {} -> {}",
                 SP_FMT_STR(E.search.query),
                 SP_FMT_STR(E.command_buffer));
+            sp_io_write_cstr(&stdout_writer, CUI->fg_accent);
             sp_io_write_str(&stdout_writer, msg);
+            sp_io_write_cstr(&stdout_writer, CUI->reset);
             break;
         }
         default: {
             // Show status message
             if (E.message.len > 0) {
-                sp_io_write_cstr(&stdout_writer, COLOR_MESSAGE);
+                sp_io_write_cstr(&stdout_writer, CUI->fg_text);
                 
                 // Truncate message if too long
                 u32 max_len = E.screen_cols - 2;
                 if (E.message.len > max_len) {
-                    sp_str_t truncated = sp_str_sub(E.message, 0, (s32)max_len);
+                    sp_str_t truncated = cui_truncate_ascii(E.message, max_len);
                     sp_io_write_str(&stdout_writer, truncated);
                 } else {
                     sp_io_write_str(&stdout_writer, E.message);
                 }
                 
-                sp_io_write_cstr(&stdout_writer, COLOR_RESET);
+                sp_io_write_cstr(&stdout_writer, CUI->reset);
             } else {
                 const c8 *hint = display_context_hint();
                 if (hint[0] != '\0') {
-                    sp_io_write_cstr(&stdout_writer, "\033[90m");
+                    sp_io_write_cstr(&stdout_writer, CUI->fg_muted);
                     sp_io_write_cstr(&stdout_writer, hint);
-                    sp_io_write_cstr(&stdout_writer, COLOR_RESET);
+                    sp_io_write_cstr(&stdout_writer, CUI->reset);
                 }
             }
             break;
@@ -377,11 +378,14 @@ void display_draw_message_bar(void) {
 
 void display_refresh(void) {
     // Update screen size (in case of resize)
-    u32 new_rows = display_get_screen_rows() - 2;
+    u32 reserved_rows = iui_tui_panel_rows() + 1;
+    u32 total_rows = display_get_screen_rows();
+    u32 new_rows = total_rows > reserved_rows ? total_rows - reserved_rows : 1;
     u32 new_cols = display_get_screen_cols();
     if (new_rows != E.screen_rows || new_cols != E.screen_cols) {
         E.screen_rows = new_rows;
         E.screen_cols = new_cols;
+        iui_tui_resize(E.screen_cols, iui_tui_panel_rows());
     }
 
     // Hide cursor during update
@@ -403,7 +407,7 @@ void display_refresh(void) {
 
     // Adjust for command/search mode input
     if (E.mode == MODE_COMMAND || E.mode == MODE_SEARCH || E.mode == MODE_REPLACE) {
-        cursor_row = E.screen_rows + 1;
+        cursor_row = E.screen_rows + iui_tui_panel_rows();
         cursor_col = E.command_buffer.len;
         if (E.mode == MODE_COMMAND) cursor_col += 1; // For ':' prefix
         if (E.mode == MODE_SEARCH) cursor_col += 1; // For '/' prefix

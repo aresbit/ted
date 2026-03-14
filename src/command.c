@@ -212,7 +212,7 @@ static bool cmd_edit_force(sp_str_t arg) {
 
 static bool cmd_help(sp_str_t arg) {
     (void)arg;
-    editor_set_message("TED v" TED_VERSION " | :llm :llmshow :llmcopy :llmstatus :js :source :langs");
+    editor_set_message("TED v" TED_VERSION " | :theme cyber|warm|night | :llm :js :source");
     return true;
 }
 
@@ -381,6 +381,27 @@ static bool cmd_targets(sp_str_t arg) {
     return true;
 }
 
+static bool cmd_theme(sp_str_t arg) {
+    if (arg.len == 0) {
+        sp_str_t cur = iui_tui_theme_name();
+        sp_str_t opts = iui_tui_theme_options();
+        editor_set_message("Theme: %.*s (options: %.*s)",
+                           (int)cur.len, cur.data,
+                           (int)opts.len, opts.data);
+        return true;
+    }
+
+    if (!iui_tui_set_theme(arg)) {
+        sp_str_t opts = iui_tui_theme_options();
+        editor_set_message("Unknown theme. Use: %.*s", (int)opts.len, opts.data);
+        return true;
+    }
+
+    sp_str_t cur = iui_tui_theme_name();
+    editor_set_message("Theme switched to %.*s", (int)cur.len, cur.data);
+    return true;
+}
+
 static const command_spec_t COMMANDS[] = {
     { "w", cmd_write },
     { "write", cmd_write },
@@ -408,6 +429,7 @@ static const command_spec_t COMMANDS[] = {
     { "plugins", cmd_plugins },
     { "langs", cmd_langs },
     { "targets", cmd_targets },
+    { "theme", cmd_theme },
 };
 
 void command_execute(sp_str_t cmd) {

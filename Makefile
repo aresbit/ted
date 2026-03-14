@@ -26,11 +26,15 @@ TS_DIR := vendor/tree-sitter
 TS_C_DIR := vendor/tree-sitter-c
 TS_SRCS := $(TS_DIR)/lib/src/lib.c $(TS_C_DIR)/src/parser.c
 TS_OBJS := $(BUILD_DIR)/ts_runtime_lib.o $(BUILD_DIR)/ts_grammar_c.o
+LIBIUI_DIR := vendor/libiui
+LIBIUI_SRC_DIR := $(LIBIUI_DIR)/src
+LIBIUI_SRCS := $(wildcard $(LIBIUI_SRC_DIR)/*.c)
+LIBIUI_OBJS := $(patsubst $(LIBIUI_SRC_DIR)/%.c,$(BUILD_DIR)/libiui_%.o,$(LIBIUI_SRCS))
 
 # Compiler Configuration
 CC := clang
 CFLAGS := -std=gnu17 -Wall -Wextra -pedantic -O2 -D_GNU_SOURCE
-CFLAGS += -Iinclude -I$(MQJS_DIR) -I$(TS_DIR)/lib/include -I$(TS_C_DIR)/src -fPIC -DSP_PS_DISABLE
+CFLAGS += -Iinclude -I$(MQJS_DIR) -I$(TS_DIR)/lib/include -I$(TS_C_DIR)/src -I$(LIBIUI_DIR)/include -I$(LIBIUI_SRC_DIR) -fPIC -DSP_PS_DISABLE
 
 # Debug build support
 debug ?= 0
@@ -63,16 +67,16 @@ else
 endif
 
 # Default target
-.PHONY: all clean debug format install uninstall smoke deps-mqjs
+.PHONY: all clean debug format install uninstall smoke deps-mqjs deps-libiui
 
-all: dir deps-mqjs $(BIN_DIR)/$(NAME)
+all: dir deps-mqjs deps-libiui $(BIN_DIR)/$(NAME)
 
 # Create directories
 dir:
 	@mkdir -p $(BUILD_DIR) $(BIN_DIR)
 
 # Link executable
-$(BIN_DIR)/$(NAME): $(OBJS) $(MQJS_OBJS) $(TS_OBJS)
+$(BIN_DIR)/$(NAME): $(OBJS) $(MQJS_OBJS) $(TS_OBJS) $(LIBIUI_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "Built: $@"
 
@@ -88,6 +92,9 @@ $(BUILD_DIR)/ts_runtime_lib.o: $(TS_DIR)/lib/src/lib.c $(TS_DIR)/lib/include/tre
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/ts_grammar_c.o: $(TS_C_DIR)/src/parser.c $(TS_C_DIR)/src/tree_sitter/parser.h | dir
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/libiui_%.o: $(LIBIUI_SRC_DIR)/%.c $(LIBIUI_DIR)/include/iui.h $(LIBIUI_SRC_DIR)/iui_config.h | dir deps-libiui
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Build with debug symbols
@@ -138,3 +145,17 @@ smoke:
 # Build MicroQuickJS vendored binary for :js/:source runtime
 deps-mqjs:
 	$(MAKE) -C vendor/mquickjs mqjs
+
+# Fetch libiui source for future terminal renderer porting
+deps-libiui:
+	@if [ -d "$(LIBIUI_DIR)" ]; then \
+		echo "libiui already present at $(LIBIUI_DIR)"; \
+	else \
+		git clone https://github.com/sysprog21/libiui.git $(LIBIUI_DIR); \
+	fi
+	@if [ ! -f "$(LIBIUI_SRC_DIR)/iui_config.h" ]; then \
+		$(MAKE) -C $(LIBIUI_DIR) defconfig >/dev/null; \
+	fi
+	@if [ ! -f "$(LIBIUI_SRC_DIR)/md3-flags-gen.inc" ] || [ ! -f "$(LIBIUI_SRC_DIR)/md3-validate-gen.inc" ]; then \
+		$(MAKE) -C $(LIBIUI_DIR) gen-md3 >/dev/null; \
+	fi
