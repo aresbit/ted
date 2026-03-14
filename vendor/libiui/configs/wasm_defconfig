@@ -1,0 +1,5 @@
+# WebAssembly (Emscripten) build configuration
+# Only WASM-specific overrides; other options inherited from Kconfig defaults
+
+CONFIG_PORT_WASM=y
+CONFIG_OPTIMIZE_SIZE=y

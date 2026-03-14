@@ -1,0 +1,412 @@
+# libiui Configuration
+
+mainmenu "libiui Configuration"
+
+# Toolchain Detection
+
+menu "Toolchain Configuration"
+
+# Compiler detection using scripts/detect-compiler.py
+# Uses $(python,...) for portable boolean checks (no shell dependency).
+# run() executes argv without a shell; assert converts True/False to y/n.
+# sys.executable ensures the script runs under the same Python as Kconfiglib.
+config CC_IS_EMCC
+    def_bool $(python,assert run(sys.executable, 'scripts/detect-compiler.py', '--is', 'Emscripten'))
+
+config CC_IS_CLANG
+    def_bool $(python,assert run(sys.executable, 'scripts/detect-compiler.py', '--is', 'Clang'))
+
+config CC_IS_GCC
+    def_bool $(python,assert run(sys.executable, 'scripts/detect-compiler.py', '--is', 'GCC'))
+
+# Derive compiler type string from the boolean checks above.
+# $(python,...) only returns y/n, so string-valued configs use conditionals.
+# Precedence: Emscripten > Clang > GCC (emcc is Clang-based, so check it first).
+config COMPILER_TYPE
+    string
+    default "Emscripten" if CC_IS_EMCC
+    default "Clang" if CC_IS_CLANG
+    default "GCC" if CC_IS_GCC
+    default "Unknown"
+
+# Check if emcc is available in PATH (for defconfig generation).
+# In-process via shutil.which() -- no subprocess needed.
+config HAVE_EMCC
+    def_bool $(python,assert shutil.which('emcc'))
+
+comment "Build mode: WebAssembly (Emscripten)"
+    depends on CC_IS_EMCC
+
+comment "Build mode: Native"
+    depends on !CC_IS_EMCC
+
+comment "Emscripten (emcc) is available in PATH"
+    depends on HAVE_EMCC && !CC_IS_EMCC
+
+comment "Emscripten (emcc) NOT found - install for WASM builds"
+    depends on !HAVE_EMCC && !CC_IS_EMCC
+
+endmenu
+
+# Dependency Detection
+
+config HAVE_SDL2
+    bool
+    default n if CC_IS_EMCC
+    default $(python,assert shutil.which('pkg-config') and run('pkg-config', '--exists', 'sdl2')) if !CC_IS_EMCC
+
+# Backend Selection (mutual exclusion)
+
+choice
+    prompt "Display Backend"
+    default PORT_WASM if CC_IS_EMCC
+    default PORT_SDL2
+
+config PORT_SDL2
+    bool "SDL2 Backend"
+    depends on HAVE_SDL2 && !CC_IS_EMCC
+    help
+      Use SDL2 for rendering and input.
+      Recommended for desktop platforms (Linux, macOS, Windows).
+      Requires SDL2 development libraries (libsdl2-dev).
+
+config PORT_WASM
+    bool "WebAssembly Backend"
+    depends on CC_IS_EMCC || HAVE_EMCC
+    help
+      Direct Canvas 2D API for browser deployment.
+      No SDL dependency - uses framebuffer with JavaScript glue.
+      Automatically selects emcc compiler when enabled.
+      Smaller binary than SDL2+Emscripten (~40% reduction).
+
+config PORT_HEADLESS
+    bool "Headless Backend (Testing)"
+    depends on !CC_IS_EMCC
+    help
+      Memory-only rendering without display output.
+      Used for automated testing and CI/CD pipelines.
+      Enables deterministic widget behavior validation.
+
+endchoice
+
+comment "WebAssembly builds use the native WASM backend (no SDL dependency)"
+    depends on CC_IS_EMCC
+
+# Core Module Selection
+
+menu "Core Modules"
+
+config MODULE_BASIC
+    bool "Basic Widgets"
+    default y
+    help
+      Interactive controls: Button, Slider, Segmented Button.
+      Note: Text and Divider are always available in core.
+      Disable to save ~600 lines for display-only applications.
+
+config MODULE_INPUT
+    bool "Input Widgets"
+    default y
+    help
+      Text entry and selection controls.
+      TextField (filled/outlined), Checkbox, Radio, Switch.
+      Includes text selection, cursor handling, IME support.
+
+config MODULE_CONTAINER
+    bool "Container Widgets"
+    default y
+    help
+      Layout containers and feedback components.
+      Card (elevated/filled/outlined), Progress (linear/circular),
+      Snackbar, Scrollable, Bottom Sheet, Tooltip, Badge, Banner, Table.
+
+config MODULE_LIST
+    bool "List Widget"
+    default y
+    help
+      Material 3 list items with multiple configurations.
+      One-line, two-line, three-line variants.
+      Supports leading/trailing icons, avatars, checkboxes, switches.
+
+comment "Compound Widget Modules"
+
+config MODULE_NAVIGATION
+    bool "Navigation Widgets"
+    default y
+    help
+      App navigation components per Material 3 spec.
+      Top App Bar: small, center-aligned, medium, large (collapsing).
+      Navigation Rail/Bar/Drawer for primary app navigation.
+      Tabs: primary and secondary variants with indicator animation.
+
+config MODULE_MODAL
+    bool "Modal System"
+    default y
+    help
+      Modal blocking infrastructure for overlays.
+      Manages focus trapping, scrim rendering, nested modals.
+      Required dependency for Dialog, Menu, and Picker components.
+
+config MODULE_OVERLAY
+    bool "Overlay Widgets"
+    default y
+    depends on MODULE_MODAL
+    help
+      Popup and dialog components.
+      Menu: items, dividers, keyboard shortcuts, nested submenus.
+      Dialog: basic, full-screen, with customizable actions.
+
+config MODULE_SELECTION
+    bool "Selection Widgets"
+    default y
+    help
+      Chip components for filtering and input.
+      Variants: Assist, Filter, Input, Suggestion.
+      Supports selection state, icons, and removal.
+
+config MODULE_PICKER
+    bool "Picker Widgets"
+    default y
+    depends on MODULE_MODAL
+    help
+      Date and time selection components.
+      Date Picker: calendar grid with month/year navigation.
+      Time Picker: clock dial with hour/minute selection.
+
+config MODULE_SEARCH
+    bool "Search Widget"
+    default y
+    help
+      Search bar with Material 3 styling.
+      Leading icon (search), trailing icon (clear/voice).
+      Integrates with TextField for text input handling.
+
+config MODULE_ACTION
+    bool "Action Widgets"
+    default y
+    help
+      Floating Action Button and Icon Button variants.
+      FAB: standard (56dp), small (40dp), large (96dp), extended.
+      Icon Button: standard, filled, tonal, outlined styles.
+
+endmenu
+
+# Feature Toggles
+
+menu "Features"
+
+config FEATURE_ACCESSIBILITY
+    bool "Accessibility Support"
+    default y
+    help
+      WCAG 2.1 compliance utilities.
+      Contrast ratio calculation, color luminance functions.
+      Screen reader hints with semantic roles and states.
+      Adds ~2KB to binary size.
+
+config FEATURE_ANIMATION
+    bool "Animation System"
+    default y
+    help
+      Material 3 motion system implementation.
+      Duration tokens: short (50-200ms), medium (250-400ms), long (450-700ms).
+      Standard easing curves: linear, emphasized, decelerate, accelerate.
+      State transition helpers for widget animations.
+
+config FEATURE_VECTOR
+    bool "Vector Graphics"
+    default y
+    help
+      Geometric primitives for custom drawing.
+      Line, circle, arc, filled/stroked variants.
+      Used by analog clock, gauges, charts, progress rings.
+
+config FEATURE_ICONS
+    bool "Icon Support"
+    default y
+    help
+      Material Symbols icon rendering.
+      Built-in icons for common actions (search, clear, menu, etc.).
+      Used by FAB, TextField, Navigation, and AppBar components.
+
+config FEATURE_SHADOWS
+    bool "Elevation Shadows"
+    default y
+    help
+      Material 3 elevation system (0-5 levels).
+      Dual-layer shadows: key (directional) + ambient.
+      Applied to Cards, Buttons, FABs, Dialogs, Menus.
+      Disable to reduce render time on constrained devices.
+
+config FEATURE_TYPOGRAPHY
+    bool "Typography Scale"
+    default y
+    help
+      Material 3 type scale with semantic sizing.
+      Functions: headline, title, body, label (small/medium/large).
+      Maps to consistent font sizes across the application.
+      Stubs to standard text when disabled.
+
+config FEATURE_FOCUS
+    bool "Keyboard Focus System"
+    default y
+    help
+      Keyboard navigation for accessibility.
+      Tab/Shift-Tab traversal between focusable widgets.
+      Visual focus ring indicator per Material 3 spec.
+      Required for WCAG 2.1 Level AA compliance.
+
+config FEATURE_THEME
+    bool "Theme System"
+    default y
+    help
+      Runtime theme management.
+      Built-in light and dark theme presets.
+      Color token system: primary, secondary, tertiary, surface, error.
+      Dynamic theme switching via iui_set_theme().
+
+endmenu
+
+# Applications
+
+menu "Examples"
+
+comment "Control panel requires MODULE_BASIC + MODULE_INPUT"
+
+config DEMO_EXAMPLE
+    bool "Build Example Binary"
+    default y
+    help
+      Comprehensive demo showcasing all enabled components.
+      Control panel with toggles when MODULE_BASIC + MODULE_INPUT enabled.
+      Auto-displays enabled demos when control panel unavailable.
+
+config DEMO_CALCULATOR
+    bool "Calculator Demo"
+    default y
+    depends on DEMO_EXAMPLE && MODULE_BASIC
+    help
+      Simple calculator demonstrating button grid layout.
+      Supports keyboard input for digits and operators.
+
+config DEMO_VECTOR
+    bool "Vector Primitives Demo"
+    default y
+    depends on DEMO_EXAMPLE && FEATURE_VECTOR
+    help
+      Vector graphics showcase.
+      Progress rings, speedometer gauge, starburst effects.
+      Demonstrates arc, circle, and line primitives.
+
+config DEMO_CLOCK
+    bool "Analog Clock Demo"
+    default y
+    depends on DEMO_EXAMPLE && FEATURE_VECTOR
+    help
+      Real-time analog clock with smooth second hand.
+      Demonstrates vector primitives and animation timing.
+
+config DEMO_NYANCAT
+    bool "Nyancat Animation"
+    default y
+    depends on DEMO_EXAMPLE && FEATURE_ANIMATION
+    help
+      Animated sprite using RLE-compressed frame data.
+      Demonstrates frame-based animation system.
+
+config DEMO_MOTION
+    bool "Motion System Demo"
+    default y
+    depends on DEMO_EXAMPLE && MODULE_BASIC && FEATURE_ANIMATION && FEATURE_VECTOR
+    help
+      Interactive easing curve visualization.
+      Compare linear, emphasized, decelerate, accelerate curves.
+      Demonstrates animation token system.
+
+config DEMO_ACCESSIBILITY
+    bool "Accessibility Demo"
+    default y
+    depends on DEMO_EXAMPLE && MODULE_BASIC && MODULE_INPUT && FEATURE_ACCESSIBILITY
+    help
+      WCAG compliance demonstration.
+      Theme contrast validation, focus navigation, screen reader hints.
+      Shows accessibility API usage patterns.
+
+config DEMO_THEME
+    bool "Theme Color Scheme Demo"
+    default y
+    depends on DEMO_EXAMPLE && FEATURE_THEME && FEATURE_SHADOWS
+    help
+      Material 3 color token visualization.
+      Displays all theme colors with elevation levels.
+      Demonstrates light/dark theme differences.
+
+config DEMO_FONT_EDITOR
+    bool "Font Editor Demo"
+    default y
+    depends on DEMO_EXAMPLE && MODULE_INPUT && FEATURE_VECTOR
+    help
+      Glyph editor for vector font data.
+      Displays and renders glyphs from glyphs-data.inc.
+      Demonstrates point editing and curve visualization.
+
+config DEMO_PIXELWALL
+    bool "Pixel-Grid Demo"
+    default y
+    depends on DEMO_EXAMPLE && MODULE_BASIC
+    help
+      Animated pixel-grid designs ported from PixelWall.
+      Includes Snake, Pong, Tetris, Invaders, and Pacman March.
+      Uses a segmented button to switch between designs.
+
+config DEMO_FORTHSALON
+    bool "Forth Salon Pixel Shader"
+    default y
+    depends on DEMO_EXAMPLE && MODULE_NAVIGATION
+    help
+      Forth Salon pixel shader demo.  A bytecode Forth interpreter
+      runs a program per-pixel to generate animated visuals.
+      Built-in examples from boomlinde/sf (twister, rainbow, etc.).
+
+endmenu
+
+# Build Options
+
+menu "Build Options"
+
+config OPTIMIZE_SIZE
+    bool "Optimize for Size (-Os)"
+    default n
+    help
+      Trade speed for smaller binary (~15% reduction).
+      Recommended for embedded or WASM deployments.
+
+config DEBUG_SYMBOLS
+    bool "Include Debug Symbols (-g)"
+    default n
+    help
+      Generate debug information for gdb/lldb.
+      Increases binary size significantly.
+
+config LTO
+    bool "Link-Time Optimization"
+    default n
+    help
+      Enable whole-program optimization.
+      Reduces binary size, increases build time.
+      May expose latent undefined behavior.
+
+config SANITIZERS
+    bool "Address/UB Sanitizers"
+    default n
+    help
+      Enable AddressSanitizer and UndefinedBehaviorSanitizer.
+      Detects memory errors and undefined behavior at runtime.
+      Significantly increases binary size and reduces performance.
+
+endmenu
+
+# Marker for configured builds
+config CONFIGURED
+    bool
+    default y

@@ -1,0 +1,71 @@
+# Prerequisites
+*.d
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Linker output
+*.ilk
+*.map
+*.exp
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.la
+*.lo
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# macOS
+*.DS_Store
+
+# XCode
+xcuserdata/
+xcshareddata/
+
+# visual studio code
+*.code-workspace
+*.vscode
+
+# libiui build artifacts
+.build/
+.config
+.config.old
+libiui.a
+libiui_test
+libiui_example
+src/iui_config.h
+tests/nyancat-data.h
+tools/kconfig
+
+# Generated MD3 validation files
+*-gen.inc
+
+# WebAssembly build artifacts
+assets/web/libiui_example.js
+assets/web/libiui_example.wasm

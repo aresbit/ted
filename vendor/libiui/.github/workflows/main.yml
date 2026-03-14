@@ -1,0 +1,279 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  detect-code-related-file-changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      has_code_related_changes: ${{ steps.set_has_code_related_changes.outputs.has_code_related_changes }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+      - name: Test changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+              .ci/**
+              .github/**
+              configs/**
+              include/**
+              mk/**
+              ports/**
+              scripts/**
+              src/**
+              tests/**
+              .clang-format
+              Makefile
+      - name: Set has_code_related_changes
+        id: set_has_code_related_changes
+        run: |
+          if [[ ${{ steps.changed-files.outputs.any_changed }} == true ]]; then
+            echo "has_code_related_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_code_related_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+  coding-style:
+    needs: [detect-code-related-file-changes]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install formatting tools
+        run: .ci/install-deps.sh format
+      - name: Check newline at end of files
+        run: .ci/check-newline.sh
+      - name: Check code formatting
+        run: .ci/check-format.sh
+
+  static-analysis:
+    needs: [detect-code-related-file-changes]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: .ci/install-deps.sh analysis
+      - name: scan-build
+        run: |
+          make defconfig
+          make clean
+          scan-build-20 --status-bugs \
+            -o /tmp/scan-build-report \
+            make -j$(nproc)
+      - name: Upload scan-build report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scan-build-report
+          path: /tmp/scan-build-report
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: scan-build (alpha checkers, informational)
+        if: always()
+        continue-on-error: true
+        run: |
+          make clean
+          scan-build-20 \
+            -enable-checker alpha.deadcode.UnreachableCode \
+            -enable-checker alpha.unix.cstring.OutOfBounds \
+            -o /tmp/scan-build-alpha-report \
+            make -j$(nproc) 2>&1 | tee /tmp/alpha-output.txt
+          WARNINGS=$(grep -c "warning:" /tmp/alpha-output.txt || true)
+          echo "::notice::Alpha checkers found $WARNINGS warnings (informational only)"
+
+  unit-tests:
+    needs: [detect-code-related-file-changes]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 30
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: .ci/install-deps.sh sdl2
+      - name: Build and test
+        run: |
+          source .ci/common.sh
+          make defconfig
+          make $PARALLEL
+          make check
+
+  headless-tests:
+    needs: [detect-code-related-file-changes, unit-tests]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: .ci/install-deps.sh headless
+      - name: Run headless tests
+        run: |
+          source .ci/common.sh
+          make defconfig
+          make check-headless $PARALLEL
+      - name: Save screenshots on failure
+        if: failure()
+        run: python3 scripts/headless-test.py --lib .build/test/libiui.a -s
+        continue-on-error: true
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-screenshots
+          path: build/*.png
+          retention-days: 7
+
+  sanitizers:
+    needs: [detect-code-related-file-changes, unit-tests]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: .ci/install-deps.sh sdl2
+      - name: Build and test with ASan
+        run: |
+          make defconfig
+          echo "CONFIG_SANITIZERS=y" >> .config
+          make check
+
+  build-matrix:
+    needs: [detect-code-related-file-changes]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: "minimal"
+            modules: ""
+          - config: "basic"
+            modules: "CONFIG_MODULE_BASIC=y"
+          - config: "full"
+            modules: "CONFIG_MODULE_BASIC=y CONFIG_MODULE_INPUT=y CONFIG_MODULE_CONTAINER=y"
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: .ci/install-deps.sh sdl2
+      - name: Build ${{ matrix.config }}
+        run: |
+          source .ci/common.sh
+          make defconfig
+          for mod in ${{ matrix.modules }}; do echo "$mod" >> .config; done
+          make libiui.a $PARALLEL
+          size libiui.a || true
+          ls -lh libiui.a
+
+  wasm-build:
+    needs: [detect-code-related-file-changes]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Cache Emscripten
+        uses: actions/cache@v5
+        with:
+          path: emsdk-cache
+          key: emsdk-4.0.3-${{ runner.os }}
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.3
+          actions-cache-folder: emsdk-cache
+      - name: Build WebAssembly
+        run: .ci/build-wasm.sh build
+      - name: Prepare deployment
+        run: .ci/build-wasm.sh deploy-prep
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-build
+          path: deploy/
+          retention-days: 7
+
+  deploy-pages:
+    needs: [wasm-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Wait for automatic Pages build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The automatic pages-build-deployment workflow (Jekyll) runs on
+          # every push and renders README.md. Wait for it to finish so our
+          # WASM deployment is always the final one.
+          #
+          # Filter by commit SHA to wait only for the run from this push.
+          sleep 10
+          WAITED=false
+          for i in $(seq 1 30); do
+            RUNNING=$(gh run list -R "${{ github.repository }}" \
+              --workflow=pages-build-deployment \
+              --commit "${{ github.sha }}" \
+              --json status \
+              --jq '[.[] | select(.status != "completed")] | length' \
+              2>/dev/null) || RUNNING="error"
+            if [ "$RUNNING" = "error" ]; then
+              echo "Could not query pages-build-deployment (may be disabled)"
+              WAITED=true
+              break
+            fi
+            if [ "$RUNNING" = "0" ]; then
+              echo "No competing Pages deployment running for this commit"
+              WAITED=true
+              break
+            fi
+            echo "Waiting for automatic Pages build... (${i}/30)"
+            sleep 5
+          done
+          if [ "$WAITED" = false ]; then
+            echo "::error::Timed out waiting for pages-build-deployment to finish"
+            exit 1
+          fi
+      - uses: actions/download-artifact@v6
+        with:
+          name: wasm-build
+          path: deploy/
+      - name: Disable Jekyll processing
+        run: touch deploy/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: deploy/
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

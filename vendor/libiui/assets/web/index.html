@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>libiui - Immediate Mode UI (WebAssembly)</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+      }
+
+      header {
+        text-align: center;
+        color: white;
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+        background: linear-gradient(90deg, #e94560, #ff6b6b);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .subtitle {
+        font-size: 1rem;
+        opacity: 0.8;
+        color: #a0a0c0;
+      }
+
+      .container {
+        background: #1e1e2e;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+        max-width: 95vw;
+        border: 1px solid #2a2a4a;
+      }
+
+      .canvas-wrapper {
+        background: #282c34;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+        padding: 0;
+      }
+
+      #iui-canvas {
+        display: block;
+        image-rendering: crisp-edges;
+        cursor: default;
+      }
+
+      .controls {
+        padding: 16px 20px;
+        background: #1a1a2a;
+        border-top: 1px solid #2a2a4a;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #4caf50;
+        animation: pulse 2s infinite;
+        box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+      }
+
+      .status-indicator.loading {
+        background: #ff9800;
+        animation: pulse-loading 1s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
+
+      @keyframes pulse-loading {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.9); }
+      }
+
+      .status-text {
+        color: #c0c0e0;
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+
+      .info {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+      }
+
+      .info-item {
+        background: #252535;
+        padding: 10px 12px;
+        border-radius: 6px;
+        border: 1px solid #3a3a5a;
+      }
+
+      .info-label {
+        font-size: 0.75rem;
+        color: #8080a0;
+        margin-bottom: 2px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .info-value {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #e0e0f0;
+      }
+
+      .console {
+        background: #0d0d15;
+        color: #a0a0c0;
+        padding: 12px;
+        border-top: 1px solid #2a2a4a;
+        max-height: 150px;
+        overflow-y: auto;
+        font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
+        font-size: 0.8rem;
+      }
+
+      .console-line {
+        margin-bottom: 3px;
+        word-break: break-all;
+      }
+
+      .console-error {
+        color: #f48771;
+      }
+
+      .console-info {
+        color: #4fc3f7;
+      }
+
+      footer {
+        margin-top: 20px;
+        text-align: center;
+        color: #6060a0;
+        font-size: 0.85rem;
+      }
+
+      footer a {
+        color: #8080c0;
+        text-decoration: none;
+        border-bottom: 1px solid rgba(128, 128, 192, 0.3);
+        transition: color 0.2s, border-color 0.2s;
+      }
+
+      footer a:hover {
+        color: #a0a0e0;
+        border-color: rgba(160, 160, 224, 0.5);
+      }
+
+      .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(30, 30, 46, 0.95);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: #c0c0e0;
+      }
+
+      .spinner {
+        border: 3px solid #2a2a4a;
+        border-top: 3px solid #e94560;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        animation: spin 0.8s linear infinite;
+        margin-bottom: 16px;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      .loading-overlay.hidden {
+        display: none;
+      }
+
+      /* Keyboard hints */
+      .hints {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #2a2a4a;
+        font-size: 0.75rem;
+        color: #6060a0;
+      }
+
+      .hints kbd {
+        background: #2a2a4a;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: inherit;
+        color: #a0a0c0;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>libiui</h1>
+      <p class="subtitle">Minimal Immediate-Mode UI Library for WebAssembly</p>
+    </header>
+
+    <div class="container">
+      <div class="canvas-wrapper">
+        <canvas id="iui-canvas" width="800" height="600"></canvas>
+        <div class="loading-overlay" id="loading">
+          <div class="spinner"></div>
+          <span>Loading WebAssembly module...</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="status">
+          <div class="status-indicator loading" id="status-indicator"></div>
+          <span class="status-text" id="status-text">Initializing...</span>
+        </div>
+
+        <div class="info">
+          <div class="info-item">
+            <div class="info-label">Canvas</div>
+            <div class="info-value">800 x 600</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Rendering</div>
+            <div class="info-value">Framebuffer</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Backend</div>
+            <div class="info-value">Canvas 2D</div>
+          </div>
+        </div>
+
+        <div class="hints">
+          <strong>Controls:</strong>
+          <kbd>Tab</kbd> Navigate widgets
+          <kbd>Enter</kbd> Activate
+          <kbd>Esc</kbd> Clear focus
+        </div>
+      </div>
+
+      <div class="console" id="console">
+        <div class="console-line console-info">[libiui] Console ready</div>
+      </div>
+    </div>
+
+    <footer>
+      <p>
+        Powered by
+        <a href="https://github.com/sysprog21/libiui" target="_blank">libiui</a>
+        |
+        <a href="https://emscripten.org/" target="_blank">Emscripten</a>
+      </p>
+    </footer>
+
+    <!-- Console logging helper -->
+    <script>
+      (function () {
+        var consoleDiv = document.getElementById("console");
+        var maxLines = 50;
+        var lineCount = 1;
+
+        window.addConsoleLine = function (text, isError) {
+          var line = document.createElement("div");
+          line.className = "console-line" + (isError ? " console-error" : "");
+          var time = new Date().toLocaleTimeString("en-US", {
+            hour12: false,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit"
+          });
+          line.textContent = "[" + time + "] " + text;
+          consoleDiv.appendChild(line);
+
+          lineCount++;
+          if (lineCount > maxLines) {
+            consoleDiv.removeChild(consoleDiv.firstChild);
+            lineCount--;
+          }
+
+          consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        };
+      })();
+    </script>
+
+    <!-- WebAssembly feature detection -->
+    <script>
+      (function() {
+        console.log("[index.html] Checking WebAssembly support...");
+        if (typeof WebAssembly !== "object") {
+          console.error("[index.html] ERROR: WebAssembly not supported in this browser!");
+          addConsoleLine("ERROR: WebAssembly not supported!", true);
+          document.getElementById("status-text").textContent = "WebAssembly not supported";
+          return;
+        }
+        if (typeof WebAssembly.instantiateStreaming !== "function") {
+          console.warn("[index.html] WebAssembly.instantiateStreaming not available, will use ArrayBuffer fallback");
+          addConsoleLine("Note: Using ArrayBuffer fallback", false);
+        }
+        console.log("[index.html] ✓ WebAssembly is supported");
+        addConsoleLine("WebAssembly supported", false);
+      })();
+    </script>
+
+    <!-- Load JavaScript glue code -->
+    <script src="iui-wasm.js"></script>
+
+    <!-- Status update on module ready -->
+    <script>
+      (function() {
+        console.log("[index.html] Setting up Module callbacks...");
+        addConsoleLine("Setting up Module callbacks...", false);
+
+        /* Check if iui-wasm.js loaded successfully */
+        if (typeof Module === "undefined") {
+          console.error("[index.html] ERROR: Module is undefined - iui-wasm.js failed to load!");
+          addConsoleLine("ERROR: iui-wasm.js failed to load!", true);
+          return;
+        }
+
+        if (typeof IuiCanvas === "undefined") {
+          console.error("[index.html] ERROR: IuiCanvas is undefined - iui-wasm.js incomplete!");
+          addConsoleLine("ERROR: IuiCanvas not defined!", true);
+          return;
+        }
+
+        console.log("[index.html] Module and IuiCanvas are defined, wrapping onRuntimeInitialized");
+
+        var originalOnRuntimeInitialized = Module.onRuntimeInitialized;
+        Module.onRuntimeInitialized = function () {
+          console.log("[index.html] onRuntimeInitialized called!");
+          addConsoleLine("Runtime initialized!", false);
+
+          if (originalOnRuntimeInitialized) {
+            originalOnRuntimeInitialized();
+          }
+
+          /* Update UI status */
+          document.getElementById("loading").classList.add("hidden");
+          document.getElementById("status-indicator").classList.remove("loading");
+          document.getElementById("status-text").textContent = "WebAssembly Runtime Active";
+
+          addConsoleLine("WebAssembly module loaded successfully", false);
+        };
+
+        console.log("[index.html] Module callbacks configured successfully");
+        addConsoleLine("Module callbacks ready", false);
+      })();
+    </script>
+
+    <!-- Load WebAssembly module with error handling -->
+    <script>
+      console.log("[index.html] About to load libiui_example.js...");
+      addConsoleLine("Loading libiui_example.js...", false);
+
+      /* Test if WASM can be fetched properly */
+      fetch("libiui_example.wasm", { method: "HEAD" })
+        .then(function(response) {
+          var contentType = response.headers.get("Content-Type");
+          console.log("[index.html] WASM Content-Type: " + contentType);
+          addConsoleLine("WASM Content-Type: " + contentType, false);
+          if (contentType && contentType.indexOf("application/wasm") === -1) {
+            console.warn("[index.html] Warning: WASM file not served with correct MIME type!");
+            console.warn("[index.html] Expected: application/wasm, Got: " + contentType);
+            addConsoleLine("Warning: Wrong MIME type - use scripts/serve-wasm.py!", true);
+          }
+        })
+        .catch(function(err) {
+          console.error("[index.html] Failed to fetch WASM file: " + err);
+          addConsoleLine("ERROR: Cannot fetch WASM file: " + err, true);
+        });
+    </script>
+    <script src="libiui_example.js" onerror="console.error('[index.html] Failed to load libiui_example.js'); addConsoleLine('ERROR: Failed to load libiui_example.js', true);"></script>
+    <script>
+      console.log("[index.html] libiui_example.js script tag processed");
+      addConsoleLine("WASM module script loaded", false);
+
+      /* Final status check after short delay */
+      setTimeout(function() {
+        console.log("[index.html] Checking WASM status after 2 seconds...");
+        if (typeof Module !== "undefined" && Module.calledRun) {
+          console.log("[index.html] ✓ WASM main() was called successfully");
+          addConsoleLine("✓ WASM running", false);
+        } else if (typeof Module !== "undefined") {
+          console.warn("[index.html] ⚠ Module exists but main() not called yet");
+          addConsoleLine("⚠ WASM not started - check console for errors", true);
+
+          /* Check for common issues */
+          if (Module.ABORT) {
+            console.error("[index.html] WASM was aborted!");
+            addConsoleLine("✗ WASM aborted!", true);
+          }
+        } else {
+          console.error("[index.html] ✗ Module is undefined after script load!");
+          addConsoleLine("✗ Module undefined", true);
+        }
+      }, 2000);
+    </script>
+  </body>
+</html>
