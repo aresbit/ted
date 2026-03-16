@@ -581,6 +581,8 @@ typedef struct {
     u32 multi_pair_index;
     bool in_string;
     c8 string_delim;
+    bool in_markdown_code_block;
+    c8 markdown_fence_char;
 } syntax_line_state_t;
 
 typedef enum {
@@ -646,9 +648,213 @@ static void save_line_state(syntax_line_state_t *state, bool in_ml, u32 ml_pair_
     state->string_delim = string_delim;
 }
 
+static bool markdown_is_language(language_t *lang) {
+    if (!lang || !lang->name.data) return false;
+    return str_eq_cstr_ci(lang->name.data, "Markdown");
+}
+
+static u32 markdown_leading_spaces(sp_str_t text) {
+    u32 i = 0;
+    while (i < text.len && (text.data[i] == ' ' || text.data[i] == '\t')) i++;
+    return i;
+}
+
+static bool markdown_match_fence(sp_str_t text, u32 start, c8 *fence_char, u32 *fence_len) {
+    if (start >= text.len) return false;
+    c8 ch = text.data[start];
+    if (ch != '`' && ch != '~') return false;
+    u32 i = start;
+    while (i < text.len && text.data[i] == ch) i++;
+    if (i - start < 3) return false;
+    if (fence_char) *fence_char = ch;
+    if (fence_len) *fence_len = i - start;
+    return true;
+}
+
+static bool markdown_is_hr(sp_str_t text, u32 start) {
+    if (start >= text.len) return false;
+    c8 ch = text.data[start];
+    if (ch != '-' && ch != '*' && ch != '_') return false;
+    u32 count = 0;
+    for (u32 i = start; i < text.len; i++) {
+        c8 c = text.data[i];
+        if (c == ch) {
+            count++;
+            continue;
+        }
+        if (c != ' ' && c != '\t') return false;
+    }
+    return count >= 3;
+}
+
+static void markdown_highlight_inline(line_t *line, u32 start) {
+    bool in_code = false;
+    bool in_link_text = false;
+    bool in_link_url = false;
+    bool in_emphasis = false;
+    c8 emphasis_char = 0;
+
+    for (u32 i = start; i < line->text.len; i++) {
+        c8 c = line->text.data[i];
+
+        if (in_code) {
+            line->hl[i] = HL_STRING;
+            if (c == '`') in_code = false;
+            continue;
+        }
+
+        if (in_link_url) {
+            line->hl[i] = HL_STRING;
+            if (c == ')') in_link_url = false;
+            continue;
+        }
+
+        if (c == '`') {
+            line->hl[i] = HL_STRING;
+            in_code = true;
+            continue;
+        }
+
+        if (c == '[' || c == ']') {
+            line->hl[i] = HL_KEYWORD;
+            in_link_text = (c == '[');
+            continue;
+        }
+
+        if (c == '(' && i > 0 && line->text.data[i - 1] == ']') {
+            line->hl[i] = HL_STRING;
+            in_link_url = true;
+            continue;
+        }
+
+        if (c == '*' || c == '_') {
+            if (in_emphasis && c == emphasis_char) {
+                line->hl[i] = HL_TYPE;
+                in_emphasis = false;
+                emphasis_char = 0;
+                continue;
+            }
+            line->hl[i] = HL_TYPE;
+            in_emphasis = true;
+            emphasis_char = c;
+            continue;
+        }
+
+        if (in_link_text) {
+            line->hl[i] = HL_FUNCTION;
+        }
+    }
+}
+
+static void syntax_highlight_markdown_line(line_t *line, syntax_line_state_t *state) {
+    if (line->text.len == 0) {
+        if (line->hl) {
+            sp_free(line->hl);
+            line->hl = NULL;
+        }
+        return;
+    }
+
+    if (line->hl) {
+        sp_free(line->hl);
+        line->hl = NULL;
+    }
+    line->hl = sp_alloc(sizeof(highlight_type_t) * line->text.len);
+    if (!line->hl) return;
+    for (u32 i = 0; i < line->text.len; i++) line->hl[i] = HL_NORMAL;
+
+    u32 start = markdown_leading_spaces(line->text);
+    c8 fence_char = 0;
+    u32 fence_len = 0;
+
+    if (state && state->in_markdown_code_block) {
+        highlight_span(line, 0, line->text.len, HL_STRING);
+        if (markdown_match_fence(line->text, start, &fence_char, &fence_len) &&
+            fence_char == state->markdown_fence_char) {
+            highlight_span(line, start, SP_MIN(start + fence_len, line->text.len), HL_KEYWORD);
+            state->in_markdown_code_block = false;
+            state->markdown_fence_char = 0;
+        }
+        return;
+    }
+
+    if (markdown_match_fence(line->text, start, &fence_char, &fence_len)) {
+        highlight_span(line, start, SP_MIN(start + fence_len, line->text.len), HL_KEYWORD);
+        if (start + fence_len < line->text.len) {
+            highlight_span(line, start + fence_len, line->text.len, HL_COMMENT);
+        }
+        if (state) {
+            state->in_markdown_code_block = true;
+            state->markdown_fence_char = fence_char;
+        }
+        return;
+    }
+
+    if (start < line->text.len && line->text.data[start] == '#') {
+        u32 i = start;
+        while (i < line->text.len && line->text.data[i] == '#') i++;
+        highlight_span(line, start, i, HL_KEYWORD);
+        if (i < line->text.len) {
+            highlight_span(line, i, line->text.len, HL_FUNCTION);
+        }
+        return;
+    }
+
+    if (start < line->text.len && line->text.data[start] == '>') {
+        highlight_span(line, start, line->text.len, HL_COMMENT);
+        return;
+    }
+
+    if (markdown_is_hr(line->text, start)) {
+        highlight_span(line, start, line->text.len, HL_KEYWORD);
+        return;
+    }
+
+    if (start < line->text.len &&
+        (line->text.data[start] == '-' || line->text.data[start] == '*' || line->text.data[start] == '+') &&
+        start + 1 < line->text.len &&
+        (line->text.data[start + 1] == ' ' || line->text.data[start + 1] == '\t')) {
+        highlight_span(line, start, start + 1, HL_KEYWORD);
+        if (start + 5 <= line->text.len &&
+            line->text.data[start + 2] == '[' &&
+            (line->text.data[start + 3] == ' ' || line->text.data[start + 3] == 'x' || line->text.data[start + 3] == 'X') &&
+            line->text.data[start + 4] == ']') {
+            highlight_span(line, start + 2, start + 5, HL_TYPE);
+            markdown_highlight_inline(line, start + 5);
+            return;
+        }
+        markdown_highlight_inline(line, start + 1);
+        return;
+    }
+
+    if (start < line->text.len && isdigit((unsigned char)line->text.data[start])) {
+        u32 i = start;
+        while (i < line->text.len && isdigit((unsigned char)line->text.data[i])) i++;
+        if (i + 1 < line->text.len && line->text.data[i] == '.' &&
+            (line->text.data[i + 1] == ' ' || line->text.data[i + 1] == '\t')) {
+            highlight_span(line, start, i + 1, HL_KEYWORD);
+            markdown_highlight_inline(line, i + 1);
+            return;
+        }
+    }
+
+    markdown_highlight_inline(line, 0);
+}
+
 static void syntax_highlight_line_impl(line_t *line, language_t *lang, syntax_line_state_t *state) {
     if (!line || !lang) return;
     if (!line->text.data && line->text.len > 0) return;
+
+    if (markdown_is_language(lang)) {
+        syntax_highlight_markdown_line(line, state);
+        if (state) {
+            state->in_multiline_comment = false;
+            state->multi_pair_index = 0;
+            state->in_string = false;
+            state->string_delim = 0;
+        }
+        return;
+    }
 
     // Free old highlight
     if (line->hl) {

@@ -17,8 +17,13 @@
 static struct termios orig_termios;
 static sp_io_writer_t stdout_writer;
 static const cui_theme_t *CUI;
+static bool G_stdin_is_tty = false;
+static bool G_raw_mode_enabled = false;
 
 static const c8* display_context_hint(void) {
+    if (sketch_is_enabled()) {
+        return "Sketch mode. Drag mouse to draw. :sketch auto|line|rect|square|ellipse|circle";
+    }
     if (E.mode != MODE_NORMAL) return "";
     if (E.buffer.modified) {
         return "Unsaved changes. Press Ctrl+S to save.";
@@ -87,15 +92,18 @@ static bool is_selected(u32 file_row, u32 file_col) {
 // Restore terminal on exit
 static void cleanup_terminal(void) {
     iui_tui_shutdown();
-    // Restore terminal settings
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+    if (G_raw_mode_enabled) {
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+    }
 
     // Clear screen and move cursor to top
     sp_io_writer_t out = sp_io_writer_from_fd(STDOUT_FILENO, SP_IO_CLOSE_MODE_NONE);
     sp_io_write_cstr(&out, ESC "2J");
     sp_io_write_cstr(&out, ESC "H");
-    sp_io_write_cstr(&out, ESC "?1000l");
-    sp_io_write_cstr(&out, ESC "?1006l");
+    if (G_stdin_is_tty) {
+        sp_io_write_cstr(&out, ESC "?1000l");
+        sp_io_write_cstr(&out, ESC "?1006l");
+    }
     sp_io_write_cstr(&out, ESC "?25h"); // Show cursor
     sp_io_flush(&out);
 }
@@ -146,15 +154,7 @@ void display_init(void) {
     stdout_writer = sp_io_writer_from_fd(STDOUT_FILENO, SP_IO_CLOSE_MODE_NONE);
     CUI = cui_theme_jobs();
 
-    // Check if stdin is a terminal
-    if (!isatty(STDIN_FILENO)) {
-        die("stdin is not a terminal");
-    }
-
-    // Save original terminal settings
-    if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
-        die("tcgetattr");
-    }
+    G_stdin_is_tty = isatty(STDIN_FILENO);
 
     // Register cleanup
     atexit(cleanup_terminal);
@@ -163,22 +163,28 @@ void display_init(void) {
     signal(SIGABRT, handle_sigfatal);
     signal(SIGSEGV, handle_sigfatal);
 
-    // Enter raw mode
-    struct termios raw = orig_termios;
-    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-    raw.c_oflag &= ~(OPOST);
-    raw.c_cflag |= (CS8);
-    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-    raw.c_cc[VMIN] = 0;
-    raw.c_cc[VTIME] = 1;
+    if (G_stdin_is_tty) {
+        if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
+            die("tcgetattr");
+        }
 
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
-        die("tcsetattr");
+        struct termios raw = orig_termios;
+        raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+        raw.c_oflag &= ~(OPOST);
+        raw.c_cflag |= (CS8);
+        raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+        raw.c_cc[VMIN] = 0;
+        raw.c_cc[VTIME] = 1;
+
+        if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
+            die("tcsetattr");
+        }
+        G_raw_mode_enabled = true;
+
+        // Enable mouse reporting (button press/release + SGR coords)
+        sp_io_write_cstr(&stdout_writer, ESC "?1000h");
+        sp_io_write_cstr(&stdout_writer, ESC "?1006h");
     }
-
-    // Enable mouse reporting (button press/release + SGR coords)
-    sp_io_write_cstr(&stdout_writer, ESC "?1000h");
-    sp_io_write_cstr(&stdout_writer, ESC "?1006h");
 
     // Get screen size
     u32 reserved_rows = iui_tui_panel_rows() + 1; // toolbar + message bar
@@ -192,6 +198,11 @@ void display_init(void) {
 }
 
 void display_draw_rows(void) {
+    if (sketch_is_enabled()) {
+        sketch_draw_canvas(&stdout_writer);
+        return;
+    }
+
     u32 gutter_width = E.config.show_line_numbers ? 5 : 0;
     u32 text_width = E.screen_cols - gutter_width;
     bool need_rehighlight = false;
@@ -323,9 +334,9 @@ void display_draw_message_bar(void) {
     // Show command buffer if in command/search mode
     switch (E.mode) {
         case MODE_COMMAND: {
-            sp_str_t msg = sp_format(":{}", SP_FMT_STR(E.command_buffer));
             sp_io_write_cstr(&stdout_writer, CUI->fg_accent);
-            sp_io_write_str(&stdout_writer, msg);
+            sp_io_write_cstr(&stdout_writer, ":");
+            sp_io_write_str(&stdout_writer, E.command_buffer);
             sp_io_write_cstr(&stdout_writer, CUI->reset);
             if (E.command_hint.len > 0) {
                 sp_io_write_cstr(&stdout_writer, "  | ");
@@ -336,9 +347,9 @@ void display_draw_message_bar(void) {
             break;
         }
         case MODE_SEARCH: {
-            sp_str_t msg = sp_format("/{}", SP_FMT_STR(E.command_buffer));
             sp_io_write_cstr(&stdout_writer, CUI->fg_accent);
-            sp_io_write_str(&stdout_writer, msg);
+            sp_io_write_cstr(&stdout_writer, "/");
+            sp_io_write_str(&stdout_writer, E.command_buffer);
             sp_io_write_cstr(&stdout_writer, CUI->reset);
             if (E.search.match_count > 0) {
                 sp_str_t count = sp_format(" ({} matches)", SP_FMT_U32(E.search.match_count));
@@ -349,11 +360,11 @@ void display_draw_message_bar(void) {
             break;
         }
         case MODE_REPLACE: {
-            sp_str_t msg = sp_format("Replace: {} -> {}",
-                SP_FMT_STR(E.search.query),
-                SP_FMT_STR(E.command_buffer));
             sp_io_write_cstr(&stdout_writer, CUI->fg_accent);
-            sp_io_write_str(&stdout_writer, msg);
+            sp_io_write_cstr(&stdout_writer, "Replace: ");
+            sp_io_write_str(&stdout_writer, E.search.query);
+            sp_io_write_cstr(&stdout_writer, " -> ");
+            sp_io_write_str(&stdout_writer, E.command_buffer);
             sp_io_write_cstr(&stdout_writer, CUI->reset);
             break;
         }
@@ -425,8 +436,13 @@ void display_refresh(void) {
 
     // Ensure cursor is within bounds (for normal/edit mode, not command/search)
     if (E.mode != MODE_COMMAND && E.mode != MODE_SEARCH && E.mode != MODE_REPLACE) {
-        if (cursor_row >= E.screen_rows) cursor_row = E.screen_rows - 1;
-        if (cursor_col >= E.screen_cols) cursor_col = E.screen_cols - 1;
+        if (sketch_is_enabled()) {
+            cursor_row = E.screen_rows + iui_tui_panel_rows();
+            cursor_col = 0;
+        } else {
+            if (cursor_row >= E.screen_rows) cursor_row = E.screen_rows - 1;
+            if (cursor_col >= E.screen_cols) cursor_col = E.screen_cols - 1;
+        }
     }
 
     display_set_cursor(cursor_row, cursor_col);

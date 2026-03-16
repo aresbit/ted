@@ -67,7 +67,9 @@ else
 endif
 
 # Default target
-.PHONY: all clean debug format install uninstall smoke deps-mqjs deps-libiui
+.PHONY: all clean debug format install uninstall smoke autoresearch-metric autoresearch-baseline autoresearch-loop deps-mqjs deps-libiui
+
+ARGS ?=
 
 all: dir deps-mqjs deps-libiui $(BIN_DIR)/$(NAME)
 
@@ -141,6 +143,18 @@ info:
 # Smoke regression checks
 smoke:
 	./scripts/regression.sh
+
+autoresearch-metric:
+	sh ./scripts/autoresearch-metric.sh
+
+autoresearch-baseline:
+	@printf 'goal\tTED autoresearch readiness\n'
+	@printf 'metric\t'
+	@sh ./scripts/autoresearch-metric.sh
+	@printf 'guard\tmake smoke\n'
+
+autoresearch-loop:
+	sh ./scripts/autoresearch-loop.sh $(ARGS)
 
 # Build MicroQuickJS vendored binary for :js/:source runtime
 deps-mqjs:

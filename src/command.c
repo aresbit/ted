@@ -381,6 +381,51 @@ static bool cmd_targets(sp_str_t arg) {
     return true;
 }
 
+static bool cmd_recognizers(sp_str_t arg) {
+    (void)arg;
+    sp_str_t list = ext_list_recognizers();
+    if (list.len == 0) {
+        editor_set_message("Recognizers: (none)");
+    } else {
+        editor_set_message("Recognizers: %.*s", (int)list.len, list.data);
+    }
+    return true;
+}
+
+static bool cmd_sketch(sp_str_t arg) {
+    if (arg.len == 0 || sp_str_equal(arg, sp_str_lit("status"))) {
+        sp_str_t s = sketch_status();
+        editor_set_message("%.*s", (int)s.len, s.data);
+        return true;
+    }
+
+    if (sp_str_equal(arg, sp_str_lit("on"))) {
+        sketch_set_enabled(true);
+        editor_set_message("Sketch mode enabled");
+        return true;
+    }
+    if (sp_str_equal(arg, sp_str_lit("off"))) {
+        sketch_set_enabled(false);
+        editor_set_message("Sketch mode disabled");
+        return true;
+    }
+    if (sp_str_equal(arg, sp_str_lit("clear"))) {
+        sketch_clear();
+        editor_set_message("Sketch canvas cleared");
+        return true;
+    }
+
+    if (sketch_set_mode_name(arg)) {
+        sketch_set_enabled(true);
+        sp_str_t mode = sketch_mode_name();
+        editor_set_message("Sketch recognizer set to %.*s", (int)mode.len, mode.data);
+        return true;
+    }
+
+    editor_set_message("Usage: :sketch on|off|clear|status|auto|line|rect|square|ellipse|circle");
+    return true;
+}
+
 static const command_spec_t COMMANDS[] = {
     { "w", cmd_write },
     { "write", cmd_write },
@@ -408,6 +453,8 @@ static const command_spec_t COMMANDS[] = {
     { "plugins", cmd_plugins },
     { "langs", cmd_langs },
     { "targets", cmd_targets },
+    { "recognizers", cmd_recognizers },
+    { "sketch", cmd_sketch },
 };
 
 void command_execute(sp_str_t cmd) {

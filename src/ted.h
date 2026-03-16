@@ -121,6 +121,16 @@ typedef struct {
     u32 tab_width;
 } config_t;
 
+typedef enum {
+    SKETCH_SHAPE_NONE = 0,
+    SKETCH_SHAPE_AUTO,
+    SKETCH_SHAPE_LINE,
+    SKETCH_SHAPE_RECT,
+    SKETCH_SHAPE_SQUARE,
+    SKETCH_SHAPE_ELLIPSE,
+    SKETCH_SHAPE_CIRCLE,
+} sketch_shape_kind_t;
+
 
 // Main editor state
 typedef struct {
@@ -238,6 +248,25 @@ bool iui_tui_set_theme(sp_str_t name);
 sp_str_t iui_tui_theme_name(void);
 sp_str_t iui_tui_theme_options(void);
 
+// sketch.c
+void sketch_init(void);
+bool sketch_is_enabled(void);
+bool sketch_set_enabled(bool enabled);
+bool sketch_set_preferred_kind(sketch_shape_kind_t kind);
+sketch_shape_kind_t sketch_preferred_kind(void);
+bool sketch_set_mode_name(sp_str_t mode);
+sp_str_t sketch_mode_name(void);
+sp_str_t sketch_status(void);
+sp_str_t sketch_shapes_json(void);
+u32 sketch_shape_count(void);
+u32 sketch_stroke_point_count(void);
+bool sketch_has_preview_shape(void);
+sketch_shape_kind_t sketch_preview_kind(void);
+double sketch_preview_score(void);
+void sketch_clear(void);
+bool sketch_handle_mouse(u32 term_col_1b, u32 term_row_1b, bool pressed);
+void sketch_draw_canvas(sp_io_writer_t *out);
+
 // syntax.c
 void syntax_init(void);
 language_t* syntax_detect_language(sp_str_t filename);
@@ -290,8 +319,13 @@ bool ext_eval(sp_str_t code, sp_str_t *output, sp_str_t *error);
 bool ext_run_file(sp_str_t path, sp_str_t *output, sp_str_t *error);
 u32 ext_autoload_plugins(sp_str_t *last_error);
 sp_str_t ext_list_loaded_plugins(void);
+u32 ext_loaded_plugin_count(void);
 bool ext_invoke_registered_command(sp_str_t code, sp_str_t arg, sp_str_t *output, sp_str_t *error);
 bool ext_invoke_operator_target(sp_str_t code, c8 op, sp_str_t seq, u32 count, u32 row, u32 col, sp_str_t *output, sp_str_t *error);
+bool ext_register_recognizer(sp_str_t name, sp_str_t code);
+sp_str_t ext_list_recognizers(void);
+u32 ext_recognizer_count(void);
+bool ext_invoke_recognizer(sp_str_t stroke_json, sp_str_t *output, sp_str_t *error);
 
 // llm.c
 bool llm_query(sp_str_t prompt, bool with_context, sp_str_t *output, sp_str_t *error);
@@ -317,6 +351,7 @@ void input_handle_normal(int c);
 void input_handle_operator_pending(int c);
 bool input_register_operator_target(sp_str_t seq, sp_str_t code);
 sp_str_t input_list_operator_targets(void);
+u32 input_operator_target_count(void);
 void input_handle_insert(int c);
 void input_handle_command(int c);
 void input_handle_search(int c);

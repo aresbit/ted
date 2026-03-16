@@ -3,8 +3,9 @@
 ## Product Direction
 TED should evolve as:
 1. Functional core: deterministic editor primitives (buffer ops, search ops, undo ops).
-2. Imperative shell: command/keybinding layer that orchestrates primitives.
-3. Extension runtime: script layer (MicroQuickJS) calling shell APIs.
+2. Geometry core: deterministic sketch fitting primitives (stroke sampling, line/circle/ellipse/box fitting).
+3. Imperative shell: command/keybinding layer that orchestrates primitives.
+4. Extension runtime: script layer (MicroQuickJS) calling shell APIs.
 
 This keeps core stable while enabling infinite extensibility in user space.
 
@@ -16,6 +17,13 @@ This keeps core stable while enabling infinite extensibility in user space.
   - Explicit input/output
   - No UI side effects
   - Reusable by shell and extension runtime
+
+### L1.5 Geometry Core
+- Modules: `sketch.c` (current), future split into `geom_fit.c`, `geom_render.c`
+- Properties:
+  - Works in visual coordinates corrected for terminal aspect ratio
+  - Shape recognition is score-based from least-squares objectives
+  - Avoids shape synthesis through hard-coded if/else branches
 
 ### L2 Imperative Shell
 - Modules: `input.c`, `command.c`, `display.c`
@@ -148,3 +156,19 @@ To add a command:
 - No hot-reload daemon yet
 - No async job scheduler yet
 - No network permissions by default
+
+## Phase 9: Sketch + Geometry Plugin Bridge
+- `:sketch on|off|clear|status|auto|line|rect|square|ellipse|circle`
+- Current host APIs:
+  - `ted.sketchMode(mode?)`
+  - `ted.sketchClear()`
+  - `ted.sketchStatus()`
+  - `ted.sketchShapes()`
+  - `ted.registerRecognizer(name, code)`
+- Current fitting strategy:
+  - line: total least squares
+  - circle: lifted linear least squares
+  - ellipse: PCA frame + quadratic least squares
+  - rect/square: oriented box residual minimization
+- Future API direction:
+  - `ted.registerSketchCommand(name, code)`

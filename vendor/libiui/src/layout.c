@@ -528,7 +528,11 @@ bool iui_begin_window(iui_context *ctx,
     if (ctx->current_window)
         return false;
 
+    if (!name)
+        name = "";
+
     uint32_t id = iui_hash_str(name);
+    bool has_title = name[0] != '\0';
 
     /* already created? */
     for (uint32_t i = 0; i < ctx->num_windows; ++i)
@@ -546,7 +550,8 @@ bool iui_begin_window(iui_context *ctx,
             .name = name,
             .id = id,
             .pos = {.x = x, .y = y},
-            .min_width = iui_get_text_width(ctx, name) + ctx->padding * 2.f,
+            .min_width = (has_title ? iui_get_text_width(ctx, name) : 0.f) +
+                         ctx->padding * 2.f,
             .min_height = ctx->row_height * 2.f,
             .width = width,
             .height = height,
@@ -597,11 +602,11 @@ bool iui_begin_window(iui_context *ctx,
         w->pos.x + ctx->padding,
         w->pos.y + ctx->padding,
         w->width - ctx->padding * 2.f,
-        ctx->row_height,
+        has_title ? ctx->row_height : 0.f,
     };
 
     /* bring window to front and move if click on the title bar */
-    if ((ctx->mouse_pressed & IUI_MOUSE_LEFT) &&
+    if (has_title && (ctx->mouse_pressed & IUI_MOUSE_LEFT) &&
         in_rect(&title_rect, ctx->mouse_pos) &&
         !(w->options & IUI_WINDOW_PINNED) && ctx->resizing_window != w) {
         uint32_t idx = (uint32_t) (w - ctx->windows);
@@ -640,8 +645,10 @@ bool iui_begin_window(iui_context *ctx,
     ctx->layout.width -= 2.f * ctx->padding;
 
     /* MD3: Title uses on_surface (headline style) */
-    draw_align_text(ctx, &title_rect, w->name, ctx->colors.on_surface,
-                    IUI_ALIGN_CENTER);
+    if (has_title) {
+        draw_align_text(ctx, &title_rect, w->name, ctx->colors.on_surface,
+                        IUI_ALIGN_CENTER);
+    }
 
     /* draw resize handle */
     if (w->options & IUI_WINDOW_RESIZABLE)
@@ -801,7 +808,9 @@ void iui_end_window(iui_context *ctx)
         float content_min_width =
             ctx->window_content_min_width + ctx->padding * 4.f;
         float title_min_width =
-            iui_get_text_width(ctx, ctx->current_window->name) +
+            (ctx->current_window->name && ctx->current_window->name[0] != '\0'
+                 ? iui_get_text_width(ctx, ctx->current_window->name)
+                 : 0.f) +
             ctx->padding * 2.f;
         ctx->current_window->min_width =
             fmaxf(title_min_width, content_min_width);

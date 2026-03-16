@@ -1,0 +1,301 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+
+ENGINE="codex"
+ITERATIONS=1
+RESUME_LAST=0
+PRINT_ONLY=0
+ALLOW_DIRTY=0
+MODEL_ARG=""
+RESULTS_DIR=".autoresearch"
+RESULTS_FILE="$RESULTS_DIR/results.tsv"
+LAST_OUTPUT_FILE="$RESULTS_DIR/last-output.txt"
+LAST_PROMPT_FILE="$RESULTS_DIR/last-prompt.txt"
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/autoresearch-loop.sh [options]
+
+Options:
+  -n, --iterations N   Number of iterations to run (default: 1)
+  --resume-last        Resume the most recent Codex session each round
+  --print-prompt       Print the generated prompt and exit
+  --allow-dirty        Allow running on a dirty worktree; disables auto rollback safety
+  --engine NAME        Agent CLI to use (default: codex)
+  --model MODEL        Optional model override passed to the CLI
+  -h, --help           Show this help
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -n|--iterations)
+      ITERATIONS="${2:-}"
+      shift 2
+      ;;
+    --resume-last)
+      RESUME_LAST=1
+      shift
+      ;;
+    --print-prompt)
+      PRINT_ONLY=1
+      shift
+      ;;
+    --allow-dirty)
+      ALLOW_DIRTY=1
+      shift
+      ;;
+    --engine)
+      ENGINE="${2:-}"
+      shift 2
+      ;;
+    --model)
+      MODEL_ARG="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'Unknown option: %s\n' "$1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+case "$ITERATIONS" in
+  ''|*[!0-9]*)
+    printf 'iterations must be a positive integer\n' >&2
+    exit 1
+    ;;
+esac
+
+if [ "$ITERATIONS" -lt 1 ]; then
+  printf 'iterations must be >= 1\n' >&2
+  exit 1
+fi
+
+if ! command -v "$ENGINE" >/dev/null 2>&1; then
+  printf 'engine not found in PATH: %s\n' "$ENGINE" >&2
+  exit 1
+fi
+
+mkdir -p "$RESULTS_DIR"
+
+ensure_git_repo() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    printf 'autoresearch loop requires a git repository\n' >&2
+    exit 1
+  }
+}
+
+worktree_dirty() {
+  [ -n "$(git status --porcelain)" ]
+}
+
+require_safe_worktree() {
+  ensure_git_repo
+  if worktree_dirty && [ "$ALLOW_DIRTY" -ne 1 ]; then
+    printf '%s\n' 'Refusing to run with a dirty worktree.' >&2
+    printf '%s\n' 'Commit/stash your changes first, or rerun with --allow-dirty to disable auto rollback safety.' >&2
+    exit 1
+  fi
+}
+
+metric_value() {
+  sh scripts/autoresearch-metric.sh
+}
+
+guard_passes() {
+  make smoke >/dev/null
+}
+
+current_head() {
+  git rev-parse --short HEAD
+}
+
+timestamp() {
+  date '+%Y-%m-%d %H:%M:%S'
+}
+
+ensure_results_header() {
+  if [ ! -f "$RESULTS_FILE" ]; then
+    printf 'time\titeration\tbaseline\tmetric\tstatus\tguard\tcommit\tnote\n' > "$RESULTS_FILE"
+  fi
+}
+
+append_result() {
+  ts="$1"
+  iter="$2"
+  baseline="$3"
+  metric="$4"
+  status="$5"
+  guard="$6"
+  commit="$7"
+  note="$8"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$ts" "$iter" "$baseline" "$metric" "$status" "$guard" "$commit" "$note" >> "$RESULTS_FILE"
+}
+
+build_prompt() {
+  baseline="$1"
+  cat <<EOF
+You are running TED autoresearch inside $ROOT_DIR.
+
+Read these files first:
+- program.md
+- docs/autoresearch-runbook.md
+- docs/extension-architecture.md
+- docs/ui-tui-design.md
+
+Goal: Increase TED autoresearch readiness and product quality.
+Scope: src/*.c, src/*.h, docs/*.md, README.md, program.md, scripts/*.sh, Makefile
+Metric: TED autoresearch readiness score (higher is better)
+Baseline: $baseline
+Verify: sh scripts/autoresearch-metric.sh
+Guard: make smoke
+
+Protocol:
+1. Make exactly one focused improvement iteration.
+2. Prefer work that improves plugin extensibility, sketch capability, cyber pixel UI, or autoresearch automation.
+3. Run the verify command and the guard.
+4. Do not commit your changes; the loop driver will decide keep/discard.
+5. If the metric does not improve, or the guard fails, leave the worktree as-is so the loop driver can revert it safely.
+6. End with a concise summary including baseline, new metric, and whether the change should be kept.
+
+Current priority:
+- Make TED more self-driving so a local loop script can keep improving it with minimal user input.
+- Prefer shipping productized capabilities over more planning text.
+EOF
+}
+
+run_once() {
+  prompt="$1"
+  if [ "$ENGINE" != "codex" ]; then
+    printf 'unsupported engine: %s\n' "$ENGINE" >&2
+    exit 1
+  fi
+
+  model_flag=""
+  if [ -n "$MODEL_ARG" ]; then
+    model_flag="--model $MODEL_ARG"
+  fi
+
+  if [ "$RESUME_LAST" -eq 1 ]; then
+    # shellcheck disable=SC2086
+    codex exec resume --last --full-auto -C "$ROOT_DIR" $model_flag -o "$LAST_OUTPUT_FILE" "$prompt"
+  else
+    # shellcheck disable=SC2086
+    codex exec --full-auto -C "$ROOT_DIR" $model_flag -o "$LAST_OUTPUT_FILE" "$prompt"
+  fi
+}
+
+snapshot_untracked() {
+  git ls-files --others --exclude-standard | sort
+}
+
+cleanup_new_untracked() {
+  before_file="$1"
+  after_file="$2"
+  if [ ! -f "$after_file" ]; then
+    return
+  fi
+  while IFS= read -r path; do
+    [ -z "$path" ] && continue
+    if [ ! -f "$before_file" ] || ! grep -Fxq "$path" "$before_file"; then
+      rm -rf -- "$path"
+    fi
+  done < "$after_file"
+}
+
+keep_iteration() {
+  iter="$1"
+  baseline="$2"
+  metric="$3"
+  ts="$4"
+  note="$5"
+  if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+    append_result "$ts" "$iter" "$baseline" "$metric" "noop" "pass" "$(current_head)" "$note"
+    return
+  fi
+
+  git add -A
+  git commit -m "experiment: autoresearch iteration $iter ($baseline->$metric)" >/dev/null
+  append_result "$ts" "$iter" "$baseline" "$metric" "keep" "pass" "$(current_head)" "$note"
+}
+
+discard_iteration() {
+  iter="$1"
+  baseline="$2"
+  metric="$3"
+  ts="$4"
+  guard_status="$5"
+  note="$6"
+  before_untracked_file="$7"
+  after_untracked_file="$8"
+
+  git reset --hard HEAD >/dev/null
+  cleanup_new_untracked "$before_untracked_file" "$after_untracked_file"
+  append_result "$ts" "$iter" "$baseline" "$metric" "discard" "$guard_status" "$(current_head)" "$note"
+}
+
+baseline_metric="$(metric_value)"
+printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
+
+if [ "$PRINT_ONLY" -eq 1 ]; then
+  cat "$LAST_PROMPT_FILE"
+  exit 0
+fi
+
+require_safe_worktree
+ensure_results_header
+
+i=1
+while [ "$i" -le "$ITERATIONS" ]; do
+  ts="$(timestamp)"
+  printf '== autoresearch iteration %s/%s ==\n' "$i" "$ITERATIONS"
+  printf 'baseline metric: %s\n' "$baseline_metric"
+
+  before_untracked="$RESULTS_DIR/untracked-before-$i.txt"
+  after_untracked="$RESULTS_DIR/untracked-after-$i.txt"
+  snapshot_untracked > "$before_untracked"
+
+  run_once "$(cat "$LAST_PROMPT_FILE")"
+
+  metric_after="$(metric_value)"
+  snapshot_untracked > "$after_untracked"
+
+  if guard_passes; then
+    guard_status="pass"
+  else
+    guard_status="fail"
+  fi
+
+  note="$(tr '\n' ' ' < "$LAST_OUTPUT_FILE" | sed 's/[[:space:]]\+/ /g' | cut -c1-240)"
+
+  if [ "$ALLOW_DIRTY" -eq 1 ]; then
+    status="observe"
+    append_result "$ts" "$i" "$baseline_metric" "$metric_after" "$status" "$guard_status" "$(current_head)" "$note"
+    printf 'dirty mode: recorded observation only (no keep/discard)\n'
+  elif [ "$guard_status" = "pass" ] && [ "$metric_after" -gt "$baseline_metric" ]; then
+    previous_baseline="$baseline_metric"
+    keep_iteration "$i" "$baseline_metric" "$metric_after" "$ts" "$note"
+    baseline_metric="$metric_after"
+    printf 'kept iteration: metric %s -> %s\n' "$previous_baseline" "$metric_after"
+  else
+    discard_iteration "$i" "$baseline_metric" "$metric_after" "$ts" "$guard_status" "$note" \
+      "$before_untracked" "$after_untracked"
+    printf 'discarded iteration: metric %s -> %s, guard=%s\n' "$baseline_metric" "$metric_after" "$guard_status"
+  fi
+
+  printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
+  i=$((i + 1))
+done
+
+printf 'final baseline metric: %s\n' "$baseline_metric"
+printf 'results log: %s\n' "$RESULTS_FILE"

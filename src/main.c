@@ -7,6 +7,7 @@
 #include "digital_rain.h"
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
 
 editor_t E;
 
@@ -69,16 +70,23 @@ s32 main(s32 argc, c8 **argv) {
         }
     }
 
-    // Show digital rain animation for 2 seconds
-    digital_rain_t rain = digital_rain_create();
-    rain.frame_delay_ms = 80; // optional
-    rain.alphabet_only = false;
-    rain.use_colors = true;
-    if (digital_rain_init(&rain)) {
-        digital_rain_run_for_ms(&rain, 2000);
-        digital_rain_destroy(&rain);
-    } else {
-        // Animation failed, continue anyway
+    if (isatty(STDIN_FILENO)) {
+        // Show digital rain animation for 2 seconds only for interactive TTY launches.
+        digital_rain_t rain = digital_rain_create();
+        rain.line_len_min = 4;
+        rain.line_len_max = 12;
+        rain.line_speed_min = 1;
+        rain.line_speed_max = 2;
+        rain.frame_delay_ms = 55;
+        rain.alphabet_only = true;
+        rain.use_colors = true;
+        rain.head_color = sp_str_lit(DR_ESC "38;2;220;255;255m");
+        rain.text_color = sp_str_lit(DR_ESC "38;2;0;240;170m");
+        rain.bg_color = sp_str_lit(DR_ESC "48;2;3;6;16m");
+        if (digital_rain_init(&rain)) {
+            digital_rain_run_for_ms(&rain, 850);
+            digital_rain_destroy(&rain);
+        }
     }
 
     // Initialize editor

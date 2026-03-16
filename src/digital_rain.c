@@ -82,17 +82,13 @@ static s32 random_range(s32 min, s32 max, u64* seed) {
 // Generate random ASCII character
 static c8 random_ascii(u64* seed, bool alphabet_only) {
     if (alphabet_only) {
-        // Random letter A-Z or a-z
-        s32 r = random_range(0, 51, seed);
-        return (r < 26) ? (c8)('A' + r) : (c8)('a' + (r - 26));
+        static const c8 glyphs[] = "01";
+        s32 idx = random_range(0, (s32)(sizeof(glyphs) - 2), seed);
+        return glyphs[idx];
     } else {
-        // Random ASCII from ranges 33-65 and 91-126
-        s32 range = random_range(0, 1, seed);
-        if (range == 0) {
-            return (c8)random_range(33, 65, seed);
-        } else {
-            return (c8)random_range(91, 126, seed);
-        }
+        static const c8 glyphs[] = "01#/\\|[]{}<>+=-*";
+        s32 idx = random_range(0, (s32)(sizeof(glyphs) - 2), seed);
+        return glyphs[idx];
     }
 }
 
@@ -214,12 +210,8 @@ bool digital_rain_init(digital_rain_t* rain) {
         return false;
     }
     
-    SP_LOG("Terminal size: {} columns, {} rows", 
-           SP_FMT_S32(rain->term_cols), SP_FMT_S32(rain->term_rows));
-    
     // Setup terminal
     if (!digital_rain_setup_terminal(rain)) {
-        SP_LOG("Failed to setup terminal");
         return false;
     }
     
@@ -240,7 +232,8 @@ bool digital_rain_init(digital_rain_t* rain) {
         
         s32 length = random_range(rain->line_len_min, rain->line_len_max, &seed);
         s32 speed = random_range(rain->line_speed_min, rain->line_speed_max, &seed);
-        s32 position = -random_range(0, rain->term_rows * 2, &seed);
+        s32 phase = random_range(0, 3, &seed);
+        s32 position = -random_range(0, rain->term_rows * (phase + 1), &seed);
         
         sp_dyn_array_push(rain->line_lengths, length);
         sp_dyn_array_push(rain->line_positions, position);
@@ -269,39 +262,45 @@ static void draw_frame(digital_rain_t* rain) {
     // Hide cursor
     sp_os_print(sp_str_lit(DR_CURSOR_HIDE));
     
+    digital_rain_set_color(rain->bg_color);
+
     // For each column
     for (s32 col = 0; col < num_columns; col++) {
         s32 length = rain->line_lengths[col];
         s32 position = rain->line_positions[col];
         s32 speed = rain->line_speeds[col];
         u64 seed = rain->line_seeds[col];
-        
-        // Clear this column
-        for (s32 row = 0; row < rain->term_rows; row++) {
-            digital_rain_set_cursor_position(col, row);
-            sp_os_print(sp_str_lit(" "));
+        s32 next_position = position + speed;
+
+        for (s32 i = 0; i < speed; i++) {
+            s32 clear_row = position + i;
+            if (clear_row >= 0 && clear_row < rain->term_rows) {
+                digital_rain_set_cursor_position(col, clear_row);
+                sp_os_print(sp_str_lit(" "));
+            }
         }
-        
+
         // Draw rain column
         for (s32 i = 0; i < length; i++) {
-            s32 row_pos = position + i;
+            s32 row_pos = next_position + i;
             
             if (row_pos >= 0 && row_pos < rain->term_rows) {
                 digital_rain_set_cursor_position(col, row_pos);
                 
                 // Set color
                 if (i == length - 1) {
-                    // Head character
                     if (rain->use_colors) {
                         digital_rain_set_color(rain->head_color);
                     }
                 } else {
-                    // Tail with gradient
                     if (rain->use_colors) {
-                        s32 brightness = 255 - (i * 255 / length);
-                        if (brightness < 10) brightness = 10;
-                        sp_str_t color = sp_format(DR_ESC "38;2;0;{};0m", 
-                                                  SP_FMT_S32(brightness));
+                        s32 green = 245 - (i * 150 / length);
+                        s32 blue = 200 - (i * 140 / length);
+                        if (green < 70) green = 70;
+                        if (blue < 30) blue = 30;
+                        sp_str_t color = sp_format(DR_ESC "38;2;0;{};{}m",
+                                                  SP_FMT_S32(green),
+                                                  SP_FMT_S32(blue));
                         digital_rain_set_color(color);
                     }
                 }
@@ -315,19 +314,17 @@ static void draw_frame(digital_rain_t* rain) {
             }
         }
         
-        // Update position
-        position += speed;
-        rain->line_positions[col] = position;
+        rain->line_positions[col] = next_position;
         
         // Reset if off screen
-        if (position > rain->term_rows + length) {
-            u64 new_seed = rain->line_seeds[col] ^ (position * 0x9e3779b97f4a7c15ULL);
+        if (next_position > rain->term_rows + length) {
+            u64 new_seed = rain->line_seeds[col] ^ (next_position * 0x9e3779b97f4a7c15ULL);
             xorshift64(&new_seed);
             
             rain->line_lengths[col] = random_range(
                 rain->line_len_min, rain->line_len_max, &new_seed);
             rain->line_positions[col] = -random_range(
-                0, rain->term_rows * 2, &new_seed);
+                0, rain->term_rows * random_range(1, 3, &new_seed), &new_seed);
             rain->line_speeds[col] = random_range(
                 rain->line_speed_min, rain->line_speed_max, &new_seed);
             rain->line_seeds[col] = new_seed;
@@ -348,8 +345,6 @@ void digital_rain_run(digital_rain_t* rain) {
     g_rain = rain;
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-    
-    SP_LOG("Starting digital rain animation. Press Ctrl+C to exit.");
     
     // Animation loop
     while (rain->is_running) {
@@ -388,8 +383,6 @@ void digital_rain_run_for_ms(digital_rain_t* rain, u64 duration_ms) {
     g_rain = rain;
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-
-    SP_LOG("Starting digital rain animation for %llu ms.", duration_ms);
 
     u64 start_time = sp_tm_read_timer(&rain->timer);
     u64 start_ms = start_time / 1000000;
@@ -435,5 +428,4 @@ void digital_rain_stop(digital_rain_t* rain) {
     digital_rain_clear_screen();
     sp_os_print(sp_str_lit(DR_CURSOR_SHOW DR_RESET_COLORS));
     
-    SP_LOG("Digital rain animation stopped.");
 }

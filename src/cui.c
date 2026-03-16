@@ -6,11 +6,11 @@
 
 static const cui_theme_t CUI_THEME_JOBS = {
     .reset = "\033[0m",
-    .fg_text = "\033[38;5;255m",
-    .fg_muted = "\033[38;5;244m",
-    .fg_accent = "\033[38;5;208m",
+    .fg_text = "\033[38;5;231m",
+    .fg_muted = "\033[38;5;110m",
+    .fg_accent = "\033[38;5;51m",
     .fg_warning = "\033[38;5;220m",
-    .bg_elevated = "\033[48;5;235m",
+    .bg_elevated = "\033[48;5;234m",
 };
 
 const cui_theme_t *cui_theme_jobs(void) {

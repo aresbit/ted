@@ -28,7 +28,7 @@ void editor_init(void) {
     undo_init(&E.undo);
     undo_init(&E.redo);
     search_init();
-    ext_init();
+    sketch_init();
     treesitter_init();
     E.clipboard = sp_str_lit("");
 

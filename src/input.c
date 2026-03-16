@@ -39,7 +39,7 @@ static const c8 *CMD_CANDIDATES[] = {
     "w", "write", "q", "quit", "wq", "q!", "goto", "g",
     "set", "syntax", "e", "edit", "e!", "edit!", "help", "h",
     "agent", "llm", "llmshow", "llmcopy", "llmstatus",
-    "js", "source", "plugins", "langs", "targets"
+    "js", "source", "plugins", "langs", "targets", "recognizers", "sketch"
 };
 static const c8 *SET_CANDIDATES[] = {
     "nu", "number", "nonu", "nonumber", "syntax", "nosyntax", "wrap", "nowrap"
@@ -95,10 +95,9 @@ static sp_str_t completion_build_hint(const c8 **matches, u32 match_count, u32 t
     sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
     sp_str_builder_t b = sp_str_builder_from_writer(&writer);
     sp_str_builder_append_cstr(&b, "Tab ");
-    sp_str_builder_append(&b, sp_format(
-        "{} / {}",
-        SP_FMT_U32(index + 1),
-        SP_FMT_U32(total_match_count)));
+    sp_str_builder_append(&b, sp_format("{}", SP_FMT_U32(index + 1)));
+    sp_str_builder_append_cstr(&b, " / ");
+    sp_str_builder_append(&b, sp_format("{}", SP_FMT_U32(total_match_count)));
     sp_str_builder_append_cstr(&b, ": ");
     current_len = 8;
 
@@ -338,6 +337,10 @@ sp_str_t input_list_operator_targets(void) {
     return sp_str_builder_to_str(&b);
 }
 
+u32 input_operator_target_count(void) {
+    return G_op_target_count;
+}
+
 static bool op_target_find_exact(sp_str_t seq, sp_str_t *code) {
     for (u32 i = 0; i < G_op_target_count; i++) {
         if (!sp_str_equal(G_op_targets[i].seq, seq)) continue;
@@ -398,6 +401,9 @@ int input_read_key(void) {
     // Read one character
     nread = read(STDIN_FILENO, &c, 1);
     if (nread != 1) {
+        if (nread == 0 && !isatty(STDIN_FILENO)) {
+            return 17; // Ctrl+Q on piped EOF for non-interactive smoke checks.
+        }
         return 0;
     }
 
@@ -408,7 +414,7 @@ int input_read_key(void) {
             return '\033'; // Just ESC key
         }
 
-        c8 seq[16]; // Buffer for escape sequence
+        c8 seq[64]; // SGR mouse events can be longer on large terminals
         u32 seq_len = 0;
 
         // Read the first character after ESC
@@ -432,6 +438,13 @@ int input_read_key(void) {
                     break;
                 }
                 seq_len++;
+            }
+
+            // Sequence too long or truncated: ignore it rather than risk
+            // mis-parsing a partial mouse packet as a key.
+            if (seq_len >= sizeof(seq) - 1) {
+                seq[sizeof(seq) - 1] = '\0';
+                return 0;
             }
 
             // Null-terminate for easier debugging (not strictly needed)
@@ -472,6 +485,9 @@ int input_read_key(void) {
                 bool left_button = ((b & 0x3) == 0);
                 if (left_button && x > 0 && y > 0) {
                     if (iui_tui_handle_mouse(x, y, is_press)) {
+                        return 0;
+                    }
+                    if (sketch_handle_mouse(x, y, is_press)) {
                         return 0;
                     }
                 }

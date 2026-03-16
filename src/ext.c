@@ -28,6 +28,7 @@ static JSValue js_clearTimeout(JSContext *ctx, JSValue *this_val, int argc, JSVa
 
 #define EXT_VM_MEM_SIZE (256 * 1024)
 #define EXT_LOADED_PLUGIN_CAP 256
+#define EXT_RECOGNIZER_CAP 64
 #define BASE_CFUNC_COUNT ((u32)(sizeof(js_c_function_table) / sizeof(js_c_function_table[0])))
 
 typedef enum {
@@ -41,6 +42,11 @@ typedef enum {
     TED_CFUNC_REGISTER_COMMAND,
     TED_CFUNC_REGISTER_LANGUAGE,
     TED_CFUNC_REGISTER_OPERATOR_TARGET,
+    TED_CFUNC_REGISTER_RECOGNIZER,
+    TED_CFUNC_SKETCH_MODE,
+    TED_CFUNC_SKETCH_CLEAR,
+    TED_CFUNC_SKETCH_STATUS,
+    TED_CFUNC_SKETCH_SHAPES,
     TED_CFUNC_COUNT,
 } ted_cfunc_id_t;
 
@@ -51,6 +57,12 @@ static u8 *G_mem = SP_NULLPTR;
 static bool G_ext_ready = false;
 static sp_str_t G_loaded_plugins[EXT_LOADED_PLUGIN_CAP];
 static u32 G_loaded_plugin_count = 0;
+typedef struct {
+    sp_str_t name;
+    sp_str_t code;
+} ext_recognizer_t;
+static ext_recognizer_t G_recognizers[EXT_RECOGNIZER_CAP];
+static u32 G_recognizer_count = 0;
 
 static JSCFunctionDef G_ext_cfunc_table[BASE_CFUNC_COUNT + TED_CFUNC_COUNT];
 static JSSTDLibraryDef G_ext_stdlib;
@@ -67,6 +79,11 @@ static JSValue ted_js_save(JSContext *ctx, JSValue *this_val, int argc, JSValue 
 static JSValue ted_js_register_command(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
 static JSValue ted_js_register_language(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
 static JSValue ted_js_register_operator_target(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+static JSValue ted_js_register_recognizer(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+static JSValue ted_js_sketch_mode(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+static JSValue ted_js_sketch_clear(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+static JSValue ted_js_sketch_status(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
+static JSValue ted_js_sketch_shapes(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv);
 
 static sp_str_t ted_buffer_to_text(void) {
     sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
@@ -226,6 +243,94 @@ static JSValue ted_js_register_operator_target(JSContext *ctx, JSValue *this_val
         return JS_ThrowTypeError(ctx, "ted.registerOperatorTarget: registration failed");
     }
     return JS_UNDEFINED;
+}
+
+bool ext_register_recognizer(sp_str_t name, sp_str_t code) {
+    if (name.len == 0 || code.len == 0) return false;
+    for (u32 i = 0; i < G_recognizer_count; i++) {
+        if (!sp_str_equal(G_recognizers[i].name, name)) continue;
+        G_recognizers[i].code = sp_str_copy(code);
+        return true;
+    }
+    if (G_recognizer_count >= EXT_RECOGNIZER_CAP) return false;
+    G_recognizers[G_recognizer_count].name = sp_str_copy(name);
+    G_recognizers[G_recognizer_count].code = sp_str_copy(code);
+    G_recognizer_count++;
+    return true;
+}
+
+sp_str_t ext_list_recognizers(void) {
+    if (G_recognizer_count == 0) return sp_str_lit("");
+    sp_io_writer_t writer = sp_io_writer_from_dyn_mem();
+    sp_str_builder_t b = sp_str_builder_from_writer(&writer);
+    for (u32 i = 0; i < G_recognizer_count; i++) {
+        if (i > 0) sp_str_builder_append_cstr(&b, ", ");
+        sp_str_builder_append(&b, G_recognizers[i].name);
+    }
+    return sp_str_builder_to_str(&b);
+}
+
+u32 ext_recognizer_count(void) {
+    return G_recognizer_count;
+}
+
+static JSValue ted_js_register_recognizer(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "ted.registerRecognizer: need (name, code)");
+
+    JSCStringBuf name_buf;
+    JSCStringBuf code_buf;
+    const char *name = JS_ToCString(ctx, argv[0], &name_buf);
+    const char *code = JS_ToCString(ctx, argv[1], &code_buf);
+    if (!name || !code) {
+        return JS_ThrowTypeError(ctx, "ted.registerRecognizer: both args must be strings");
+    }
+    if (!ext_register_recognizer(sp_str_from_cstr(name), sp_str_from_cstr(code))) {
+        return JS_ThrowTypeError(ctx, "ted.registerRecognizer: registration failed");
+    }
+    return JS_UNDEFINED;
+}
+
+static JSValue ted_js_sketch_mode(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    (void)this_val;
+    if (argc == 0) {
+        sp_str_t mode = sketch_mode_name();
+        return JS_NewStringLen(ctx, mode.data, mode.len);
+    }
+
+    JSCStringBuf mode_buf;
+    const char *mode = JS_ToCString(ctx, argv[0], &mode_buf);
+    if (!mode) return JS_ThrowTypeError(ctx, "ted.sketchMode: mode must be string");
+    if (!sketch_set_mode_name(sp_str_from_cstr(mode))) {
+        return JS_ThrowTypeError(ctx, "ted.sketchMode: invalid mode");
+    }
+    sketch_set_enabled(true);
+    return JS_UNDEFINED;
+}
+
+static JSValue ted_js_sketch_clear(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    (void)ctx;
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    sketch_clear();
+    return JS_UNDEFINED;
+}
+
+static JSValue ted_js_sketch_status(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    sp_str_t s = sketch_status();
+    return JS_NewStringLen(ctx, s.data, s.len);
+}
+
+static JSValue ted_js_sketch_shapes(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv) {
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    sp_str_t s = sketch_shapes_json();
+    return JS_NewStringLen(ctx, s.data, s.len);
 }
 
 static bool js_get_optional_prop_string(JSContext *ctx, JSValue obj, const c8 *prop, sp_str_t *out) {
@@ -406,6 +511,16 @@ static void ext_prepare_stdlib(void) {
         (JSCFunctionDef){ .func = { .generic = ted_js_register_language }, .name = JS_UNDEFINED, .def_type = JS_CFUNC_generic, .arg_count = 2, .magic = 0 };
     G_ext_cfunc_table[TED_CFUNC_INDEX(TED_CFUNC_REGISTER_OPERATOR_TARGET)] =
         (JSCFunctionDef){ .func = { .generic = ted_js_register_operator_target }, .name = JS_UNDEFINED, .def_type = JS_CFUNC_generic, .arg_count = 2, .magic = 0 };
+    G_ext_cfunc_table[TED_CFUNC_INDEX(TED_CFUNC_REGISTER_RECOGNIZER)] =
+        (JSCFunctionDef){ .func = { .generic = ted_js_register_recognizer }, .name = JS_UNDEFINED, .def_type = JS_CFUNC_generic, .arg_count = 2, .magic = 0 };
+    G_ext_cfunc_table[TED_CFUNC_INDEX(TED_CFUNC_SKETCH_MODE)] =
+        (JSCFunctionDef){ .func = { .generic = ted_js_sketch_mode }, .name = JS_UNDEFINED, .def_type = JS_CFUNC_generic, .arg_count = 1, .magic = 0 };
+    G_ext_cfunc_table[TED_CFUNC_INDEX(TED_CFUNC_SKETCH_CLEAR)] =
+        (JSCFunctionDef){ .func = { .generic = ted_js_sketch_clear }, .name = JS_UNDEFINED, .def_type = JS_CFUNC_generic, .arg_count = 0, .magic = 0 };
+    G_ext_cfunc_table[TED_CFUNC_INDEX(TED_CFUNC_SKETCH_STATUS)] =
+        (JSCFunctionDef){ .func = { .generic = ted_js_sketch_status }, .name = JS_UNDEFINED, .def_type = JS_CFUNC_generic, .arg_count = 0, .magic = 0 };
+    G_ext_cfunc_table[TED_CFUNC_INDEX(TED_CFUNC_SKETCH_SHAPES)] =
+        (JSCFunctionDef){ .func = { .generic = ted_js_sketch_shapes }, .name = JS_UNDEFINED, .def_type = JS_CFUNC_generic, .arg_count = 0, .magic = 0 };
 
     G_ext_stdlib = js_stdlib;
     G_ext_stdlib.c_function_table = G_ext_cfunc_table;
@@ -427,6 +542,11 @@ static void ext_register_host_api(void) {
     JS_SetPropertyStr(G_ctx, ted, "registerCommand", JS_NewCFunctionParams(G_ctx, TED_CFUNC_INDEX(TED_CFUNC_REGISTER_COMMAND), JS_UNDEFINED));
     JS_SetPropertyStr(G_ctx, ted, "registerLanguage", JS_NewCFunctionParams(G_ctx, TED_CFUNC_INDEX(TED_CFUNC_REGISTER_LANGUAGE), JS_UNDEFINED));
     JS_SetPropertyStr(G_ctx, ted, "registerOperatorTarget", JS_NewCFunctionParams(G_ctx, TED_CFUNC_INDEX(TED_CFUNC_REGISTER_OPERATOR_TARGET), JS_UNDEFINED));
+    JS_SetPropertyStr(G_ctx, ted, "registerRecognizer", JS_NewCFunctionParams(G_ctx, TED_CFUNC_INDEX(TED_CFUNC_REGISTER_RECOGNIZER), JS_UNDEFINED));
+    JS_SetPropertyStr(G_ctx, ted, "sketchMode", JS_NewCFunctionParams(G_ctx, TED_CFUNC_INDEX(TED_CFUNC_SKETCH_MODE), JS_UNDEFINED));
+    JS_SetPropertyStr(G_ctx, ted, "sketchClear", JS_NewCFunctionParams(G_ctx, TED_CFUNC_INDEX(TED_CFUNC_SKETCH_CLEAR), JS_UNDEFINED));
+    JS_SetPropertyStr(G_ctx, ted, "sketchStatus", JS_NewCFunctionParams(G_ctx, TED_CFUNC_INDEX(TED_CFUNC_SKETCH_STATUS), JS_UNDEFINED));
+    JS_SetPropertyStr(G_ctx, ted, "sketchShapes", JS_NewCFunctionParams(G_ctx, TED_CFUNC_INDEX(TED_CFUNC_SKETCH_SHAPES), JS_UNDEFINED));
 
     JS_SetPropertyStr(G_ctx, global, "ted", ted);
 }
@@ -645,6 +765,34 @@ bool ext_invoke_operator_target(
     return ext_eval_with_filename(code, "<ted-plugin-op-target>", output, error);
 }
 
+bool ext_invoke_recognizer(sp_str_t stroke_json, sp_str_t *output, sp_str_t *error) {
+    if (output) *output = sp_str_lit("");
+    if (!ext_ensure_ready(error)) return false;
+
+    for (u32 i = 0; i < G_recognizer_count; i++) {
+        JSValue global = JS_GetGlobalObject(G_ctx);
+        JS_SetPropertyStr(G_ctx, global, "__ted_stroke", JS_NewStringLen(G_ctx, stroke_json.data, stroke_json.len));
+        JS_SetPropertyStr(G_ctx, global, "__ted_recognizer", JS_NewStringLen(G_ctx,
+            G_recognizers[i].name.data, G_recognizers[i].name.len));
+
+        sp_str_t local_out = sp_str_lit("");
+        sp_str_t local_err = sp_str_lit("");
+        if (!ext_eval_with_filename(G_recognizers[i].code, "<ted-plugin-recognizer>", &local_out, &local_err)) {
+            if (error) *error = local_err;
+            return false;
+        }
+        if (local_out.len > 0 && !sp_str_equal(local_out, sp_str_lit("null")) &&
+            !sp_str_equal(local_out, sp_str_lit("undefined"))) {
+            if (output) *output = local_out;
+            if (error) *error = sp_str_lit("");
+            return true;
+        }
+    }
+
+    if (error) *error = sp_str_lit("");
+    return true;
+}
+
 static bool ext_has_js_suffix(const c8 *name) {
     size_t n = strlen(name);
     return n > 3 && strcmp(name + n - 3, ".js") == 0;
@@ -675,6 +823,10 @@ sp_str_t ext_list_loaded_plugins(void) {
         sp_str_builder_append(&b, G_loaded_plugins[i]);
     }
     return sp_str_builder_to_str(&b);
+}
+
+u32 ext_loaded_plugin_count(void) {
+    return G_loaded_plugin_count;
 }
 
 static u32 ext_autoload_plugins_from_dir(const c8 *dir_path, const c8 *prefix, sp_str_t *last_error) {
