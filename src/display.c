@@ -107,6 +107,12 @@ static void handle_sigint(int sig) {
     exit(0);
 }
 
+static void handle_sigfatal(int sig) {
+    cleanup_terminal();
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
 void display_clear(void) {
     sp_io_write_cstr(&stdout_writer, ESC "2J");
     sp_io_write_cstr(&stdout_writer, ESC "H");
@@ -153,6 +159,9 @@ void display_init(void) {
     // Register cleanup
     atexit(cleanup_terminal);
     signal(SIGINT, handle_sigint);
+    signal(SIGTERM, handle_sigfatal);
+    signal(SIGABRT, handle_sigfatal);
+    signal(SIGSEGV, handle_sigfatal);
 
     // Enter raw mode
     struct termios raw = orig_termios;

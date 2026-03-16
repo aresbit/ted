@@ -1,18 +1,18 @@
 #!/usr/bin/env sh
 set -eu
 
-printf '[1/4] build\n'
+printf '[1/5] build\n'
 mkdir -p ./tmp
 make -j4 >/dev/null
 
-printf '[2/4] help output\n'
+printf '[2/5] help output\n'
 HELP_OUT="$(./bin/ted --help 2>&1)"
 printf '%s\n' "$HELP_OUT" | rg -q 'TED - Termux Editor' || {
   echo 'help output check failed: missing title' >&2
   exit 1
 }
 
-printf '[3/4] agent command availability (source check)\n'
+printf '[3/5] agent command availability (source check)\n'
 rg -q 'cmd_agent|\"agent\"' src/command.c || {
   echo 'agent command check failed' >&2
   exit 1
@@ -38,7 +38,7 @@ rg -q 'cmd_targets|\"targets\"' src/command.c || {
   exit 1
 }
 
-printf '[4/4] js extension api availability (source check)\n'
+printf '[4/5] js extension api availability (source check)\n'
 rg -q 'registerLanguage' src/ext.c || {
   echo 'registerLanguage api check failed' >&2
   exit 1
@@ -139,5 +139,15 @@ rg -q 'syntax_highlight_buffer' src/display.c || {
   echo 'display rehighlight path check failed' >&2
   exit 1
 }
+
+printf '[5/5] narrow terminal startup (libiui grid regression)\n'
+if command -v script >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+  timeout 10 script -qefc "stty cols 44 rows 18; printf 'q' | ./bin/ted >/dev/null 2>&1" /dev/null || {
+    echo 'narrow terminal startup check failed' >&2
+    exit 1
+  }
+else
+  echo 'skip narrow terminal startup check (script/timeout missing)'
+fi
 
 echo 'smoke regression passed'

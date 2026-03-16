@@ -21,7 +21,6 @@ typedef enum {
     COMP_SCOPE_CMD,
     COMP_SCOPE_SET,
     COMP_SCOPE_SYNTAX,
-    COMP_SCOPE_THEME,
 } completion_scope_t;
 
 typedef struct {
@@ -40,13 +39,12 @@ static const c8 *CMD_CANDIDATES[] = {
     "w", "write", "q", "quit", "wq", "q!", "goto", "g",
     "set", "syntax", "e", "edit", "e!", "edit!", "help", "h",
     "agent", "llm", "llmshow", "llmcopy", "llmstatus",
-    "js", "source", "plugins", "langs", "targets", "theme"
+    "js", "source", "plugins", "langs", "targets"
 };
 static const c8 *SET_CANDIDATES[] = {
     "nu", "number", "nonu", "nonumber", "syntax", "nosyntax", "wrap", "nowrap"
 };
 static const c8 *SYNTAX_CANDIDATES[] = { "on", "off", "tree", "tree on", "tree off", "tree status" };
-static const c8 *THEME_CANDIDATES[] = { "cyber", "warm", "night" };
 
 typedef struct {
     sp_str_t seq;
@@ -193,15 +191,6 @@ static bool completion_resolve_context(
         *candidate_count = sizeof(SYNTAX_CANDIDATES) / sizeof(SYNTAX_CANDIDATES[0]);
         *before = sp_str_lit("syntax ");
         *token = sp_str_sub(buf, 7, (s32)(buf.len - 7));
-        return true;
-    }
-
-    if (str_has_prefix(buf, "theme ")) {
-        *scope = COMP_SCOPE_THEME;
-        *candidates = THEME_CANDIDATES;
-        *candidate_count = sizeof(THEME_CANDIDATES) / sizeof(THEME_CANDIDATES[0]);
-        *before = sp_str_lit("theme ");
-        *token = sp_str_sub(buf, 6, (s32)(buf.len - 6));
         return true;
     }
 
@@ -376,6 +365,27 @@ static bool input_available(void) {
     return select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0;
 }
 
+static void input_scroll_view(s32 delta_lines) {
+    if (E.buffer.line_count == 0 || E.screen_rows == 0) return;
+
+    s32 max_offset = 0;
+    if (E.buffer.line_count > E.screen_rows) {
+        max_offset = (s32)(E.buffer.line_count - E.screen_rows);
+    }
+
+    s32 next = (s32)E.row_offset + delta_lines;
+    if (next < 0) next = 0;
+    if (next > max_offset) next = max_offset;
+    E.row_offset = (u32)next;
+
+    // Keep cursor inside viewport after wheel scrolling.
+    if (E.cursor.row < E.row_offset) {
+        E.cursor.row = E.row_offset;
+    } else if (E.cursor.row >= E.row_offset + E.screen_rows) {
+        E.cursor.row = E.row_offset + E.screen_rows - 1;
+    }
+}
+
 int input_read_key(void) {
     int c = 0;
     ssize_t nread;
@@ -449,6 +459,16 @@ int input_read_key(void) {
                 }
 
                 bool is_press = seq[seq_len - 1] == 'M';
+                bool is_wheel = (b & 64) != 0;
+                if (is_wheel) {
+                    // SGR wheel: 64=up, 65=down
+                    if ((b & 1) == 0) {
+                        input_scroll_view(-3);
+                    } else {
+                        input_scroll_view(3);
+                    }
+                    return 0;
+                }
                 bool left_button = ((b & 0x3) == 0);
                 if (left_button && x > 0 && y > 0) {
                     if (iui_tui_handle_mouse(x, y, is_press)) {

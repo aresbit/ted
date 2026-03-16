@@ -23,6 +23,20 @@ typedef struct {
     iui_theme_t theme;
 } tui_theme_preset_t;
 
+typedef enum {
+    HIT_NONE = 0,
+    HIT_LINES,
+    HIT_SYNTAX,
+    HIT_WRAP,
+    HIT_FOCUS,
+} hit_action_t;
+
+typedef struct {
+    u32 col_start;
+    u32 col_end; // exclusive
+    hit_action_t action;
+} hit_box_t;
+
 typedef struct {
     bool ready;
     bool focused;
@@ -47,6 +61,8 @@ typedef struct {
     float mouse_y;
     u8 mouse_pressed;
     u8 mouse_released;
+    hit_box_t hits[8];
+    u32 hit_count;
 } iui_tui_state_t;
 
 static iui_tui_state_t S = {0};
@@ -74,6 +90,24 @@ static u8 srgb_to_ansi256(u32 color) {
     u8 g = (u8)((color >> 8) & 0xFF);
     u8 b = (u8)(color & 0xFF);
     return rgb_to_ansi256(r, g, b);
+}
+
+static u8 color_alpha(u32 color) {
+    return (u8)((color >> 24) & 0xFF);
+}
+
+static bool color_is_pure_black(u32 color) {
+    return (color & 0x00FFFFFFu) == 0;
+}
+
+static u8 bg_srgb_to_ansi256(u32 color) {
+    u8 bg = srgb_to_ansi256(color);
+    // Avoid accidental "always-black panel" caused by 256-color quantization:
+    // if source isn't true black but collapsed to ANSI 16, lift to deep gray.
+    if (bg == 16 && !color_is_pure_black(color)) {
+        return 235;
+    }
+    return bg;
 }
 
 static int px_to_col(float x) {
@@ -109,12 +143,16 @@ static void tui_clear_cells(void) {
 static void tui_draw_box(iui_rect_t rect, float radius, u32 color, void *user) {
     (void)radius;
     (void)user;
+    // libiui uses ARGB. This terminal backend currently has no alpha blending,
+    // so skip translucent overlays to avoid black artifacts.
+    if (color == 0) return;
+    if (color_alpha(color) < 0xF0) return;
     int min_col = px_to_col(rect.x);
     int min_row = px_to_row(rect.y);
     int max_col = (int)ceilf((rect.x + rect.width) / IUI_TUI_CELL_W);
     int max_row = (int)ceilf((rect.y + rect.height) / IUI_TUI_CELL_H);
     clip_rect_apply(&min_col, &min_row, &max_col, &max_row);
-    u8 bg = srgb_to_ansi256(color);
+    u8 bg = bg_srgb_to_ansi256(color);
     for (int r = min_row; r < max_row; r++) {
         for (int c = min_col; c < max_col; c++) {
             tui_cell_t *cell = cell_at(c, r);
@@ -130,7 +168,8 @@ static void tui_draw_text(float x, float y, const char *text, u32 color, void *u
     int col = px_to_col(x);
     int row = px_to_row(y);
     if (row < (int)S.clip_min_row || row >= (int)S.clip_max_row) return;
-    u8 fg = srgb_to_ansi256(color);
+    if (color != 0 && color_alpha(color) < 0x80) return;
+    u8 fg = (color == 0) ? S.default_fg : srgb_to_ansi256(color);
     u32 len = (u32)strlen(text);
     for (u32 i = 0; i < len; i++) {
         int c = col + (int)i;
@@ -179,70 +218,35 @@ static void tui_recompute_defaults(void) {
 
 static void tui_presets_init(void) {
     const iui_theme_t *dark = iui_theme_dark();
-    const iui_theme_t *light = iui_theme_light();
 
-    S.presets[0].name = "cyber";
+    // Monochrome-only preset.
+    S.presets[0].name = "mono";
     S.presets[0].theme = *dark;
-    S.presets[0].theme.primary = 0xFF00E5FF;
-    S.presets[0].theme.on_primary = 0xFF00131A;
-    S.presets[0].theme.primary_container = 0xFF003744;
-    S.presets[0].theme.on_primary_container = 0xFFB8F4FF;
-    S.presets[0].theme.secondary = 0xFFFF3D81;
-    S.presets[0].theme.on_secondary = 0xFF22010E;
-    S.presets[0].theme.secondary_container = 0xFF4D1028;
-    S.presets[0].theme.on_secondary_container = 0xFFFFD9E7;
-    S.presets[0].theme.tertiary = 0xFFB388FF;
-    S.presets[0].theme.on_tertiary = 0xFF230A4A;
-    S.presets[0].theme.surface = 0xFF0A0C11;
-    S.presets[0].theme.surface_container = 0xFF131725;
-    S.presets[0].theme.surface_container_high = 0xFF1A2233;
-    S.presets[0].theme.surface_container_highest = 0xFF22304A;
-    S.presets[0].theme.outline = 0xFF5D6C88;
+    S.presets[0].theme.primary = 0xFF3A3A3A;
+    S.presets[0].theme.on_primary = 0xFFEDEDED;
+    S.presets[0].theme.primary_container = 0xFF2D2D2D;
+    S.presets[0].theme.on_primary_container = 0xFFE0E0E0;
+    S.presets[0].theme.secondary = 0xFF444444;
+    S.presets[0].theme.on_secondary = 0xFFEAEAEA;
+    S.presets[0].theme.secondary_container = 0xFF2C2C2C;
+    S.presets[0].theme.on_secondary_container = 0xFFE0E0E0;
+    S.presets[0].theme.tertiary = 0xFF505050;
+    S.presets[0].theme.on_tertiary = 0xFFEAEAEA;
+    S.presets[0].theme.surface = 0xFF111111;
+    S.presets[0].theme.on_surface = 0xFFD8D8D8;
+    S.presets[0].theme.surface_container = 0xFF1A1A1A;
+    S.presets[0].theme.surface_container_high = 0xFF222222;
+    S.presets[0].theme.surface_container_highest = 0xFF2A2A2A;
+    S.presets[0].theme.outline = 0xFF5A5A5A;
 
-    S.presets[1].name = "warm";
-    S.presets[1].theme = *light;
-    S.presets[1].theme.primary = 0xFFC75A1B;
-    S.presets[1].theme.on_primary = 0xFFFFFFFF;
-    S.presets[1].theme.primary_container = 0xFFFFD9C2;
-    S.presets[1].theme.on_primary_container = 0xFF3A1703;
-    S.presets[1].theme.secondary = 0xFF5D7E52;
-    S.presets[1].theme.on_secondary = 0xFFFFFFFF;
-    S.presets[1].theme.secondary_container = 0xFFDDECCD;
-    S.presets[1].theme.on_secondary_container = 0xFF1A2A14;
-    S.presets[1].theme.tertiary = 0xFF7A5BAA;
-    S.presets[1].theme.on_tertiary = 0xFFFFFFFF;
-    S.presets[1].theme.surface = 0xFFFFF8EF;
-    S.presets[1].theme.on_surface = 0xFF1F1B17;
-    S.presets[1].theme.surface_container = 0xFFF5ECE0;
-    S.presets[1].theme.surface_container_high = 0xFFECE0D2;
-    S.presets[1].theme.surface_container_highest = 0xFFE2D3C2;
-    S.presets[1].theme.outline = 0xFF8A7665;
-
-    S.presets[2].name = "night";
-    S.presets[2].theme = *dark;
-    S.presets[2].theme.primary = 0xFFFF8A4C;
-    S.presets[2].theme.on_primary = 0xFF251003;
-    S.presets[2].theme.primary_container = 0xFF4E2411;
-    S.presets[2].theme.on_primary_container = 0xFFFFD8C4;
-    S.presets[2].theme.secondary = 0xFF6BCB77;
-    S.presets[2].theme.on_secondary = 0xFF0D2211;
-    S.presets[2].theme.secondary_container = 0xFF1F3A26;
-    S.presets[2].theme.on_secondary_container = 0xFFD6F7DB;
-    S.presets[2].theme.tertiary = 0xFF89A8FF;
-    S.presets[2].theme.on_tertiary = 0xFF101A40;
-    S.presets[2].theme.surface = 0xFF0F0F12;
-    S.presets[2].theme.surface_container = 0xFF181A20;
-    S.presets[2].theme.surface_container_high = 0xFF20232C;
-    S.presets[2].theme.surface_container_highest = 0xFF2A2E3A;
-    S.presets[2].theme.outline = 0xFF6A7080;
-
-    S.active_theme = 2;
+    // Keep API compatibility; all map to monochrome.
+    S.presets[1] = S.presets[0];
+    S.presets[2] = S.presets[0];
+    S.active_theme = 0;
     tui_recompute_defaults();
 }
 
-u32 iui_tui_panel_rows(void) {
-    return 3;
-}
+u32 iui_tui_panel_rows(void) { return 1; }
 
 void iui_tui_init(u32 cols, u32 rows) {
     if (S.ready) return;
@@ -369,93 +373,108 @@ bool iui_tui_handle_key(int key) {
 }
 
 bool iui_tui_handle_mouse(u32 term_col_1b, u32 term_row_1b, bool pressed) {
-    if (!S.ready || !S.ctx) return false;
+    if (!S.ready) return false;
     u32 start_row_1b = E.screen_rows + 1;
     u32 end_row_1b = start_row_1b + S.rows - 1;
     if (term_row_1b < start_row_1b || term_row_1b > end_row_1b) return false;
     if (term_col_1b == 0 || term_col_1b > E.screen_cols) return false;
 
+    if (pressed) return true;
+
     u32 local_col = term_col_1b - 1;
-    u32 local_row = term_row_1b - start_row_1b;
-    S.mouse_x = (float)local_col * IUI_TUI_CELL_W + (IUI_TUI_CELL_W * 0.5f);
-    S.mouse_y = (float)local_row * IUI_TUI_CELL_H + (IUI_TUI_CELL_H * 0.5f);
-    if (pressed) {
-        S.mouse_pressed |= IUI_MOUSE_LEFT;
-    } else {
-        S.mouse_released |= IUI_MOUSE_LEFT;
+    hit_action_t action = HIT_NONE;
+    for (u32 i = 0; i < S.hit_count; i++) {
+        if (local_col < S.hits[i].col_start || local_col >= S.hits[i].col_end) continue;
+        action = S.hits[i].action;
+        break;
     }
-    S.focused = true;
+
+    switch (action) {
+    case HIT_LINES:
+        E.config.show_line_numbers = !E.config.show_line_numbers;
+        editor_set_message("Line numbers %s", E.config.show_line_numbers ? "enabled" : "disabled");
+        break;
+    case HIT_SYNTAX:
+        E.config.syntax_enabled = !E.config.syntax_enabled;
+        for (u32 i = 0; i < E.buffer.line_count; i++) {
+            E.buffer.lines[i].hl_dirty = true;
+        }
+        editor_set_message("Syntax %s", E.config.syntax_enabled ? "enabled" : "disabled");
+        break;
+    case HIT_WRAP:
+        E.config.auto_wrap = !E.config.auto_wrap;
+        editor_set_message("Wrap %s", E.config.auto_wrap ? "enabled" : "disabled");
+        break;
+    case HIT_FOCUS:
+        S.focused = !S.focused;
+        editor_set_message(S.focused ? "UI focus ON (Tab/Enter/Esc)" : "UI focus OFF");
+        break;
+    default:
+        break;
+    }
     return true;
 }
 
-void iui_tui_draw_toolbar(void) {
-    if (!S.ready || !S.ctx || !S.cells) return;
-    tui_clear_cells();
-
-    iui_set_theme(S.ctx, tui_active_theme());
-    iui_update_mouse_pos(S.ctx, S.mouse_x, S.mouse_y);
-    iui_update_mouse_buttons(S.ctx, S.mouse_pressed, S.mouse_released);
-    iui_begin_frame(S.ctx, 0.016f);
-    if (iui_begin_window(S.ctx, "TED-TUI", 0.f, 0.f, (float)S.pixel_w, (float)S.pixel_h, IUI_WINDOW_PINNED)) {
-        char ln_label[32];
-        char syn_label[32];
-        char wrap_label[32];
-        char theme_label[32];
-        snprintf(ln_label, sizeof(ln_label), "Lines:%s", E.config.show_line_numbers ? "on" : "off");
-        snprintf(syn_label, sizeof(syn_label), "Syntax:%s", E.config.syntax_enabled ? "on" : "off");
-        snprintf(wrap_label, sizeof(wrap_label), "Wrap:%s", E.config.auto_wrap ? "on" : "off");
-        snprintf(theme_label, sizeof(theme_label), "Theme:%s", S.presets[S.active_theme].name);
-
-        float cell_w = ((float)S.pixel_w - 40.f) / 5.f;
-        if (cell_w < 76.f) cell_w = 76.f;
-        iui_grid_begin(S.ctx, 5, cell_w, 36.f, 4.f);
-
-        if (iui_button(S.ctx, theme_label, IUI_ALIGN_CENTER)) {
-            S.active_theme = (S.active_theme + 1) % 3;
-            tui_recompute_defaults();
-            editor_set_message("Theme: %s", S.presets[S.active_theme].name);
+static void toolbar_write_text(u32 *col, const c8 *text, u8 fg, u8 bg) {
+    if (!text) return;
+    u32 len = (u32)strlen(text);
+    for (u32 i = 0; i < len && *col < S.cols; i++) {
+        tui_cell_t *cell = cell_at((int)*col, 0);
+        if (cell) {
+            cell->ch = text[i];
+            cell->fg = fg;
+            cell->bg = bg;
         }
-        iui_grid_next(S.ctx);
-
-        if (iui_button(S.ctx, ln_label, IUI_ALIGN_CENTER)) {
-            E.config.show_line_numbers = !E.config.show_line_numbers;
-            editor_set_message("Line numbers %s", E.config.show_line_numbers ? "enabled" : "disabled");
-        }
-        iui_grid_next(S.ctx);
-
-        if (iui_button(S.ctx, syn_label, IUI_ALIGN_CENTER)) {
-            E.config.syntax_enabled = !E.config.syntax_enabled;
-            for (u32 i = 0; i < E.buffer.line_count; i++) {
-                E.buffer.lines[i].hl_dirty = true;
-            }
-            editor_set_message("Syntax %s", E.config.syntax_enabled ? "enabled" : "disabled");
-        }
-        iui_grid_next(S.ctx);
-
-        if (iui_button(S.ctx, wrap_label, IUI_ALIGN_CENTER)) {
-            E.config.auto_wrap = !E.config.auto_wrap;
-            editor_set_message("Wrap %s", E.config.auto_wrap ? "enabled" : "disabled");
-        }
-        iui_grid_next(S.ctx);
-
-        if (iui_button(S.ctx, S.focused ? "Focus:ON" : "Focus:OFF", IUI_ALIGN_CENTER)) {
-            S.focused = !S.focused;
-            editor_set_message(S.focused ? "UI focus ON (Tab/Enter/Esc)" : "UI focus OFF");
-        }
-        iui_grid_end(S.ctx);
-
-        iui_text(S.ctx, IUI_ALIGN_LEFT, "Mode:%s  Ln:%u Col:%u  Ctrl+T focus",
-                 (E.mode == MODE_INSERT) ? "INSERT" :
-                 (E.mode == MODE_COMMAND) ? "COMMAND" :
-                 (E.mode == MODE_SEARCH) ? "SEARCH" :
-                 (E.mode == MODE_REPLACE) ? "REPLACE" :
-                 (E.mode == MODE_OPERATOR_PENDING) ? "OP" : "NORMAL",
-                 E.cursor.row + 1, E.cursor.col + 1);
-        iui_end_window(S.ctx);
+        (*col)++;
     }
-    iui_end_frame(S.ctx);
-    S.mouse_pressed = 0;
-    S.mouse_released = 0;
+}
+
+static void toolbar_add_hit(u32 start, u32 end, hit_action_t action) {
+    if (S.hit_count >= 8 || end <= start) return;
+    S.hits[S.hit_count].col_start = start;
+    S.hits[S.hit_count].col_end = end;
+    S.hits[S.hit_count].action = action;
+    S.hit_count++;
+}
+
+void iui_tui_draw_toolbar(void) {
+    if (!S.ready || !S.cells) return;
+    tui_clear_cells();
+    S.hit_count = 0;
+    const u8 fg_dim = 246;
+    const u8 fg_label = 250;
+    const u8 fg_value = 254;
+    const u8 bg = 234;
+
+    u32 col = 0;
+    toolbar_write_text(&col, " ted ", fg_dim, bg);
+    toolbar_write_text(&col, "| ", fg_dim, bg);
+
+    u32 s = col;
+    toolbar_write_text(&col, "lines:", fg_label, bg);
+    toolbar_write_text(&col, E.config.show_line_numbers ? "on " : "off ", fg_value, bg);
+    toolbar_add_hit(s, col, HIT_LINES);
+
+    toolbar_write_text(&col, "| ", fg_dim, bg);
+    s = col;
+    toolbar_write_text(&col, "syntax:", fg_label, bg);
+    toolbar_write_text(&col, E.config.syntax_enabled ? "on " : "off ", fg_value, bg);
+    toolbar_add_hit(s, col, HIT_SYNTAX);
+
+    toolbar_write_text(&col, "| ", fg_dim, bg);
+    s = col;
+    toolbar_write_text(&col, "wrap:", fg_label, bg);
+    toolbar_write_text(&col, E.config.auto_wrap ? "on " : "off ", fg_value, bg);
+    toolbar_add_hit(s, col, HIT_WRAP);
+
+    toolbar_write_text(&col, "| ", fg_dim, bg);
+    s = col;
+    toolbar_write_text(&col, S.focused ? "focus:on" : "focus:off", fg_value, bg);
+    toolbar_add_hit(s, col, HIT_FOCUS);
+
+    if (col < S.cols) {
+        toolbar_write_text(&col, "  (click)", fg_dim, bg);
+    }
 }
 
 void iui_tui_blit(sp_io_writer_t *out, u32 start_row) {
@@ -463,11 +482,11 @@ void iui_tui_blit(sp_io_writer_t *out, u32 start_row) {
     for (u32 r = 0; r < S.rows; r++) {
         sp_str_t pos = sp_format("\033[{};{}H", SP_FMT_U32(start_row + r + 1), SP_FMT_U32(1));
         sp_io_write_str(out, pos);
-        u8 cur_fg = 255;
-        u8 cur_bg = 234;
+        int cur_fg = -1;
+        int cur_bg = -1;
         for (u32 c = 0; c < S.cols; c++) {
             tui_cell_t cell = S.cells[r * S.cols + c];
-            if (cell.fg != cur_fg || cell.bg != cur_bg) {
+            if ((int)cell.fg != cur_fg || (int)cell.bg != cur_bg) {
                 sp_str_t style = sp_format("\033[38;5;{}m\033[48;5;{}m",
                                            SP_FMT_U32(cell.fg),
                                            SP_FMT_U32(cell.bg));
@@ -482,21 +501,14 @@ void iui_tui_blit(sp_io_writer_t *out, u32 start_row) {
 }
 
 bool iui_tui_set_theme(sp_str_t name) {
-    if (name.len == 0) return false;
-    for (u32 i = 0; i < 3; i++) {
-        sp_str_t n = sp_str_from_cstr(S.presets[i].name);
-        if (!sp_str_equal(name, n)) continue;
-        S.active_theme = i;
-        tui_recompute_defaults();
-        return true;
-    }
+    (void)name;
     return false;
 }
 
 sp_str_t iui_tui_theme_name(void) {
-    return sp_str_from_cstr(S.presets[S.active_theme].name);
+    return sp_str_lit("mono");
 }
 
 sp_str_t iui_tui_theme_options(void) {
-    return sp_str_lit("cyber|warm|night");
+    return sp_str_lit("mono");
 }
