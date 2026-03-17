@@ -848,11 +848,11 @@ static void tui_select_runtime_tab(int tab) {
 static void make_deck_summary(c8 *buf, u32 cap) {
     if (!buf || cap == 0) return;
     if (S.active_tab == 2) {
-        snprintf(buf, cap, "rt dock");
+        snprintf(buf, cap, "runtime");
     } else if (sketch_is_enabled()) {
-        snprintf(buf, cap, "%s lab", sketch_kind_label(sketch_preferred_kind()));
+        snprintf(buf, cap, "gesture %s", sketch_kind_label(sketch_preferred_kind()));
     } else {
-        snprintf(buf, cap, "txt deck");
+        snprintf(buf, cap, "text deck");
     }
 }
 
@@ -866,7 +866,7 @@ static void tui_draw_header_row(iui_rect_t row_rect) {
     c8 deck_buf[32];
     c8 right_buf[32];
     sp_str_t filename = E.buffer.filename.len > 0 ? E.buffer.filename : sp_str_lit("[No Name]");
-    iui_sizing_t sizes[] = { IUI_FIXED(10), IUI_FIXED(12), IUI_GROW(4), IUI_GROW(2) };
+    iui_sizing_t sizes[] = { IUI_FIXED(18), IUI_FIXED(14), IUI_GROW(4), IUI_GROW(2) };
 
     tui_draw_row_band(row_rect,
                       tui_active_theme()->surface_container_lowest,
@@ -885,7 +885,7 @@ static void tui_draw_header_row(iui_rect_t row_rect) {
         .align = IUI_CROSS_STRETCH,
     });
 
-    tui_draw_compact_chip(iui_box_next(S.ctx), "TED", true, tui_active_theme()->primary, false);
+    tui_draw_compact_chip(iui_box_next(S.ctx), "TED//STUDIO", true, tui_active_theme()->primary, false);
     tui_draw_compact_chip(iui_box_next(S.ctx), deck_buf, true, tui_active_theme()->outline, false);
 
     iui_rect_t file_rect = iui_box_next(S.ctx);
@@ -897,7 +897,7 @@ static void tui_draw_header_row(iui_rect_t row_rect) {
 }
 
 static void tui_draw_controls_row(iui_rect_t row_rect) {
-    static const c8 *tab_labels[] = { "txt", "shape", "dock" };
+    static const c8 *tab_labels[] = { "text", "gesture", "runtime" };
     bool sketch_clear_ready = sketch_is_enabled() ||
                               sketch_shape_count() > 0 ||
                               sketch_stroke_point_count() > 0;
@@ -979,7 +979,7 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
 static void tui_draw_status_row(iui_rect_t row_rect) {
     c8 mode_buf[32];
     c8 geometry_buf[56];
-    c8 plugins_buf[40];
+    c8 runtime_buf[40];
     c8 session_buf[64];
     u32 shapes = sketch_shape_count();
     u32 stroke_pts = sketch_stroke_point_count();
@@ -989,27 +989,27 @@ static void tui_draw_status_row(iui_rect_t row_rect) {
                       tui_active_theme()->outline);
 
     if (sketch_is_enabled()) {
-        snprintf(mode_buf, sizeof(mode_buf), "shape %s", sketch_kind_label(sketch_preferred_kind()));
+        snprintf(mode_buf, sizeof(mode_buf), "sketch:on %s", sketch_kind_label(sketch_preferred_kind()));
     } else {
-        snprintf(mode_buf, sizeof(mode_buf), "text %s", editor_mode_label());
+        snprintf(mode_buf, sizeof(mode_buf), "sketch:off %s", editor_mode_label());
     }
 
     if (sketch_is_enabled()) {
         if (sketch_has_preview_shape()) {
-            snprintf(geometry_buf, sizeof(geometry_buf), "bank %u  %s  %.3f",
+            snprintf(geometry_buf, sizeof(geometry_buf), "gesture bank %u  %s  %.3f",
                      shapes,
                      sketch_kind_label(sketch_preview_kind()),
                      sketch_preview_score());
         } else if (stroke_pts > 0) {
-            snprintf(geometry_buf, sizeof(geometry_buf), "trace %u pts", stroke_pts);
+            snprintf(geometry_buf, sizeof(geometry_buf), "gesture trace %u pts", stroke_pts);
         } else {
-            snprintf(geometry_buf, sizeof(geometry_buf), "bank %u  idle", shapes);
+            snprintf(geometry_buf, sizeof(geometry_buf), "gesture bank %u  idle", shapes);
         }
     } else {
-        snprintf(geometry_buf, sizeof(geometry_buf), "buffer");
+        snprintf(geometry_buf, sizeof(geometry_buf), "gesture idle");
     }
 
-    make_plugin_summary(plugins_buf, sizeof(plugins_buf));
+    make_plugin_summary(runtime_buf, sizeof(runtime_buf));
     make_session_summary(session_buf, sizeof(session_buf));
     iui_sizing_t sizes[] = { IUI_GROW(1), IUI_GROW(2), IUI_GROW(2), IUI_GROW(3) };
     iui_box_begin(S.ctx, &(iui_box_config_t){
@@ -1022,10 +1022,10 @@ static void tui_draw_status_row(iui_rect_t row_rect) {
         .align = IUI_CROSS_STRETCH,
     });
 
-    tui_draw_compact_segment(iui_box_next(S.ctx), "deck", mode_buf, tui_active_theme()->primary);
-    tui_draw_compact_segment(iui_box_next(S.ctx), "buf", geometry_buf, tui_active_theme()->secondary);
-    tui_draw_compact_segment(iui_box_next(S.ctx), "ext", plugins_buf, tui_active_theme()->tertiary);
-    tui_draw_compact_segment(iui_box_next(S.ctx), "sess", session_buf, tui_active_theme()->outline);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "mode", mode_buf, tui_active_theme()->primary);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "canvas", geometry_buf, tui_active_theme()->secondary);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "runtime", runtime_buf, tui_active_theme()->tertiary);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "session", session_buf, tui_active_theme()->outline);
 
     iui_box_end(S.ctx);
 }
