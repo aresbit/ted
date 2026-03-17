@@ -728,10 +728,7 @@ bool sketch_handle_mouse(u32 term_col_1b, u32 term_row_1b, bool pressed) {
             G.stroke_active = true;
         }
         push_point(x, y);
-        if (G.stroke_count >= 8) {
-            G.preview = fit_for_mode(G.stroke, G.stroke_count, G.preferred_kind);
-            G.has_preview = (G.preview.kind != SKETCH_SHAPE_NONE);
-        }
+        G.has_preview = false;
     } else if (G.stroke_active) {
         push_point(x, y);
         if (G.stroke_count >= 2) {
@@ -806,18 +803,13 @@ static double shape_distance(const sketch_shape_t *shape, double px, double py) 
 }
 
 static c8 glyph_for_distance(double d) {
-    if (d < 0.35) return '#';
-    if (d < 0.75) return '*';
-    if (d < 1.20) return '+';
-    if (d < 1.60) return '.';
+    if (d < 0.55) return '.';
     return ' ';
 }
 
 static c8 grid_glyph(u32 col, u32 row) {
-    if (col % 8 == 0 && row % 4 == 0) return '+';
-    if (col % 8 == 0) return '|';
-    if (row % 4 == 0) return '-';
-    if (((col / 2) + row) % 2 == 0) return '.';
+    (void)col;
+    (void)row;
     return ' ';
 }
 
@@ -835,7 +827,7 @@ void sketch_draw_canvas(sp_io_writer_t *out) {
                 double d = shape_distance(&G.shapes[i], px, py);
                 if (d < best) best = d;
             }
-            if (G.has_preview) {
+            if (!G.stroke_active && G.has_preview) {
                 double d = shape_distance(&G.preview, px, py);
                 if (d < best) {
                     best = d;
@@ -855,10 +847,10 @@ void sketch_draw_canvas(sp_io_writer_t *out) {
                 }
             }
             c8 ch = (best < DBL_MAX / 2.0) ? glyph_for_distance(best) : grid_glyph(col, row);
-            if (preview_hit && (ch == '.' || ch == '+')) ch = '*';
+            if (preview_hit && ch == ' ') ch = '.';
             if (row == 0 && col < 56) {
                 const c8 *banner = " TED Sketch  drag mouse to draw  :sketch auto|line|rect|square|ellipse|circle ";
-            if ((u32)strlen(banner) > col) ch = banner[col];
+                if ((u32)strlen(banner) > col) ch = banner[col];
             }
             sp_io_write(out, &ch, 1);
         }

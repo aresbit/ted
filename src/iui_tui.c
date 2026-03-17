@@ -26,6 +26,7 @@ typedef struct {
 typedef struct {
     bool ready;
     bool focused;
+    u8 active_tab;
     u32 active_theme;
     u32 cols;
     u32 rows;
@@ -158,8 +159,6 @@ static float tui_point_to_segment_distance(float px, float py, float x0, float y
 }
 
 static c8 tui_vector_glyph(float d) {
-    if (d < 0.60f) return '#';
-    if (d < 1.10f) return '*';
     if (d < 1.75f) return '.';
     return ' ';
 }
@@ -204,7 +203,7 @@ static void tui_draw_circle(float cx, float cy, float radius, u32 fill_color, u3
             float dist = sqrtf(dx * dx + dy * dy);
 
             if (fill_color != 0 && dist <= radius) {
-                tui_plot_cell_fg(col, row, '#', fill_color);
+                tui_plot_cell_fg(col, row, '.', fill_color);
             }
             if (stroke_color != 0) {
                 float ring = fabsf(dist - radius);
@@ -334,32 +333,33 @@ static void tui_recompute_defaults(void) {
 static void tui_presets_init(void) {
     const iui_theme_t *dark = iui_theme_dark();
 
-    // Cyber neon preset.
+    // Terminal-native preset: lean on contrast and one cyan accent instead of
+    // large MD3 color fields, which quantize poorly in ANSI 256-color mode.
     S.presets[0].name = "cyber";
     S.presets[0].theme = *dark;
-    S.presets[0].theme.primary = 0xFF00E5FF;
-    S.presets[0].theme.on_primary = 0xFF031318;
-    S.presets[0].theme.primary_container = 0xFF062635;
-    S.presets[0].theme.on_primary_container = 0xFFCFF8FF;
-    S.presets[0].theme.secondary = 0xFFFF4FD8;
-    S.presets[0].theme.on_secondary = 0xFF180514;
-    S.presets[0].theme.secondary_container = 0xFF35102E;
-    S.presets[0].theme.on_secondary_container = 0xFFFFD6F6;
-    S.presets[0].theme.tertiary = 0xFFA6FF47;
-    S.presets[0].theme.on_tertiary = 0xFF0F1602;
-    S.presets[0].theme.tertiary_container = 0xFF223308;
-    S.presets[0].theme.on_tertiary_container = 0xFFE5FFC7;
-    S.presets[0].theme.surface = 0xFF05070B;
-    S.presets[0].theme.on_surface = 0xFFF3FAFF;
-    S.presets[0].theme.surface_variant = 0xFF0B1018;
-    S.presets[0].theme.on_surface_variant = 0xFFB8C7D9;
-    S.presets[0].theme.surface_container_lowest = 0xFF030508;
-    S.presets[0].theme.surface_container_low = 0xFF08101A;
-    S.presets[0].theme.surface_container = 0xFF0C1521;
-    S.presets[0].theme.surface_container_high = 0xFF111C2B;
-    S.presets[0].theme.surface_container_highest = 0xFF18263A;
-    S.presets[0].theme.outline = 0xFF1FC9E8;
-    S.presets[0].theme.outline_variant = 0xFF21445A;
+    S.presets[0].theme.primary = 0xFF4FE3FF;
+    S.presets[0].theme.on_primary = 0xFF061217;
+    S.presets[0].theme.primary_container = 0xFF123847;
+    S.presets[0].theme.on_primary_container = 0xFFD9F7FF;
+    S.presets[0].theme.secondary = 0xFFFFC857;
+    S.presets[0].theme.on_secondary = 0xFF0B1116;
+    S.presets[0].theme.secondary_container = 0xFF4A3510;
+    S.presets[0].theme.on_secondary_container = 0xFFFFF0C7;
+    S.presets[0].theme.tertiary = 0xFF7DFFA1;
+    S.presets[0].theme.on_tertiary = 0xFF0C120D;
+    S.presets[0].theme.tertiary_container = 0xFF193820;
+    S.presets[0].theme.on_tertiary_container = 0xFFD8F6DE;
+    S.presets[0].theme.surface = 0xFF101114;
+    S.presets[0].theme.on_surface = 0xFFE7EDF2;
+    S.presets[0].theme.surface_variant = 0xFF1B1E24;
+    S.presets[0].theme.on_surface_variant = 0xFFC6D1DA;
+    S.presets[0].theme.surface_container_lowest = 0xFF0C0D10;
+    S.presets[0].theme.surface_container_low = 0xFF161920;
+    S.presets[0].theme.surface_container = 0xFF1D2129;
+    S.presets[0].theme.surface_container_high = 0xFF262C36;
+    S.presets[0].theme.surface_container_highest = 0xFF303845;
+    S.presets[0].theme.outline = 0xFF5DC6E4;
+    S.presets[0].theme.outline_variant = 0xFF4A5B69;
     S.presets[0].theme.shadow = 0xFF000000;
     S.presets[0].theme.scrim = 0xAA02040A;
     S.presets[0].theme.inverse_surface = 0xFFE6F8FF;
@@ -583,6 +583,26 @@ static void make_plugin_summary(c8 *buf, u32 cap) {
     snprintf(buf, cap, "p%u r%u t%u", plugin_count, recognizer_count, target_count);
 }
 
+static void make_runtime_list_summary(sp_str_t list, u32 count, const c8 *empty_label,
+                                      c8 *buf, u32 cap) {
+    if (!buf || cap == 0) return;
+    if (count == 0 || list.len == 0) {
+        snprintf(buf, cap, "%s", empty_label);
+        return;
+    }
+
+    u32 first_end = 0;
+    while (first_end < list.len && list.data[first_end] != ',') first_end++;
+
+    c8 first[24];
+    copy_sp_str_to_cstr(sp_str_sub(list, 0, (s32)first_end), first, sizeof(first), empty_label);
+    if (count == 1) {
+        snprintf(buf, cap, "%s", first);
+    } else {
+        snprintf(buf, cap, "%s +%u", first, count - 1);
+    }
+}
+
 static bool sp_str_contains_cstr(sp_str_t haystack, const c8 *needle) {
     if (!needle || needle[0] == '\0' || haystack.len == 0 || !haystack.data) return false;
     u32 needle_len = (u32)strlen(needle);
@@ -666,6 +686,18 @@ static void make_session_summary(c8 *buf, u32 cap) {
     snprintf(buf, cap, "%s %s %s", lang_buf, ts_buf, llm_buf);
 }
 
+static void make_runtime_dock_message(c8 *buf, u32 cap) {
+    if (!buf || cap == 0) return;
+    u32 plugins = ext_loaded_plugin_count();
+    u32 recognizers = ext_recognizer_count();
+    u32 targets = input_operator_target_count();
+    if (plugins == 0 && recognizers == 0 && targets == 0) {
+        snprintf(buf, cap, "dock empty  run :plugins");
+        return;
+    }
+    snprintf(buf, cap, "dock live  p%u r%u t%u", plugins, recognizers, targets);
+}
+
 static void iui_apply_mouse_state(void) {
     if (!S.ctx) return;
     iui_update_mouse_pos(S.ctx, S.mouse_x, S.mouse_y);
@@ -690,25 +722,25 @@ static void tui_toggle_syntax(void) {
     editor_set_message("Syntax %s", E.config.syntax_enabled ? "enabled" : "disabled");
 }
 
-static void tui_toggle_wrap(void) {
-    E.config.auto_wrap = !E.config.auto_wrap;
-    editor_set_message("Wrap %s", E.config.auto_wrap ? "enabled" : "disabled");
-}
-
 static void tui_toggle_focus(void) {
     S.focused = !S.focused;
     editor_set_message(S.focused ? "UI focus ON (Tab/Enter/Esc)" : "UI focus OFF");
 }
 
-static void tui_toggle_sketch(void) {
-    sketch_set_enabled(!sketch_is_enabled());
-    editor_set_message(sketch_is_enabled() ? "Sketch mode enabled" : "Sketch mode disabled");
+static int tui_current_tab_index(void) {
+    if (S.active_tab != 2 && sketch_is_enabled()) return 1;
+    return (int)S.active_tab;
 }
 
-static int tui_current_tab_index(void) {
-    if (sketch_is_enabled()) return 1;
-    if (ext_loaded_plugin_count() > 0 || ext_recognizer_count() > 0) return 2;
-    return 0;
+static void tui_reload_runtime_dock(void) {
+    sp_str_t err = sp_str_lit("");
+    u32 loaded = ext_autoload_plugins(&err);
+    if (err.len > 0) {
+        editor_set_message("Runtime reload error: %.*s", (int)err.len, err.data);
+        return;
+    }
+    editor_set_message("Runtime dock refreshed: %u plugins, %u recognizers, %u targets",
+                       loaded, ext_recognizer_count(), input_operator_target_count());
 }
 
 static bool tui_mouse_in_rect(iui_rect_t rect) {
@@ -750,17 +782,21 @@ static void tui_draw_text_fit(iui_rect_t rect, float x_pad, u32 color, const c8 
 
 static void tui_draw_compact_chip(iui_rect_t rect, const c8 *label, bool active, u32 accent, bool clickable) {
     const iui_theme_t *t = tui_active_theme();
-    u32 bg = active ? accent : t->surface_container;
-    u32 fg = active ? t->on_primary : t->on_surface_variant;
+    u32 bg = active ? accent : t->surface_container_lowest;
+    u32 fg = active ? t->surface_container_lowest : t->on_surface;
     u32 line = active ? accent : t->outline_variant;
     if (clickable && tui_mouse_submit(rect)) {
-        line = t->secondary;
+        bg = t->surface_container_high;
+        line = t->primary;
+        fg = t->on_surface;
     }
     S.renderer.draw_box(rect, 0.0f, bg, S.renderer.user);
+    S.renderer.draw_line(rect.x, rect.y, rect.x + rect.width, rect.y,
+                         1.0f, active ? accent : t->outline_variant, S.renderer.user);
     S.renderer.draw_line(rect.x, rect.y + rect.height - 1.0f,
                          rect.x + rect.width, rect.y + rect.height - 1.0f,
                          1.0f, line, S.renderer.user);
-    tui_draw_text_fit(rect, 4.0f, fg, label);
+    tui_draw_text_fit(rect, 2.0f, fg, label);
 }
 
 static void tui_draw_compact_segment(iui_rect_t rect, const c8 *label, const c8 *value, u32 accent) {
@@ -768,40 +804,76 @@ static void tui_draw_compact_segment(iui_rect_t rect, const c8 *label, const c8 
     iui_rect_t label_rect = rect;
     iui_rect_t value_rect = rect;
 
-    S.renderer.draw_box(rect, 0.0f, t->surface_container_low, S.renderer.user);
+    S.renderer.draw_box(rect, 0.0f, t->surface_container_lowest, S.renderer.user);
     S.renderer.draw_line(rect.x, rect.y, rect.x + rect.width, rect.y, 1.0f, accent, S.renderer.user);
-    S.renderer.draw_circle(rect.x + 5.0f, rect.y + 8.0f, 2.0f, accent, 0, 0.0f, S.renderer.user);
+    S.renderer.draw_line(rect.x, rect.y + rect.height - 1.0f,
+                         rect.x + rect.width, rect.y + rect.height - 1.0f,
+                         1.0f, t->outline_variant, S.renderer.user);
 
-    label_rect.x += 10.0f;
-    label_rect.width = 8.0f * 9.0f;
-    value_rect.x += 10.0f + label_rect.width;
-    value_rect.width -= 10.0f + label_rect.width;
+    label_rect.x += 2.0f;
+    label_rect.width = 8.0f * 6.0f;
+    value_rect.x += 2.0f + label_rect.width;
+    value_rect.width -= 2.0f + label_rect.width;
 
-    tui_draw_text_fit(label_rect, 2.0f, t->on_surface_variant, label);
+    tui_draw_text_fit(label_rect, 0.0f, t->on_surface_variant, label);
     tui_draw_text_fit(value_rect, 2.0f, t->on_surface, value);
 }
 
+static void tui_draw_row_band(iui_rect_t rect, u32 fill, u32 line) {
+    S.renderer.draw_box(rect, 0.0f, fill, S.renderer.user);
+    S.renderer.draw_line(rect.x, rect.y + rect.height - 1.0f,
+                         rect.x + rect.width, rect.y + rect.height - 1.0f,
+                         1.0f, line, S.renderer.user);
+}
+
 static void tui_select_runtime_tab(int tab) {
+    S.active_tab = (u8)tab;
     if (tab == 1 && !sketch_is_enabled()) {
-        tui_toggle_sketch();
-    } else if (tab == 0 && sketch_is_enabled()) {
-        tui_toggle_sketch();
-    } else if (tab == 2) {
-        editor_set_message("Runtime panel: plugins %u recognizers %u",
-                           ext_loaded_plugin_count(), ext_recognizer_count());
+        sketch_set_enabled(true);
+        editor_set_message("Shape lab armed");
+    } else if (tab != 1 && sketch_is_enabled()) {
+        sketch_set_enabled(false);
+        if (tab == 0) {
+            editor_set_message("Editor deck armed");
+        }
     }
+
+    if (tab == 2) {
+        c8 dock_buf[40];
+        make_runtime_dock_message(dock_buf, sizeof(dock_buf));
+        editor_set_message("Runtime dock: %s", dock_buf);
+    }
+}
+
+static void make_deck_summary(c8 *buf, u32 cap) {
+    if (!buf || cap == 0) return;
+    if (S.active_tab == 2) {
+        snprintf(buf, cap, "rt dock");
+    } else if (sketch_is_enabled()) {
+        snprintf(buf, cap, "%s lab", sketch_kind_label(sketch_preferred_kind()));
+    } else {
+        snprintf(buf, cap, "txt deck");
+    }
+}
+
+static void make_file_state_summary(c8 *buf, u32 cap) {
+    if (!buf || cap == 0) return;
+    snprintf(buf, cap, "%s", E.buffer.modified ? "dirty" : "saved");
 }
 
 static void tui_draw_header_row(iui_rect_t row_rect) {
     c8 file_buf[48];
-    c8 right_buf[56];
-    c8 title_buf[32];
+    c8 deck_buf[32];
+    c8 right_buf[32];
     sp_str_t filename = E.buffer.filename.len > 0 ? E.buffer.filename : sp_str_lit("[No Name]");
-    iui_sizing_t sizes[] = { IUI_FIXED(28), IUI_GROW(2), IUI_GROW(3), IUI_GROW(2) };
+    iui_sizing_t sizes[] = { IUI_FIXED(10), IUI_FIXED(12), IUI_GROW(4), IUI_GROW(2) };
 
+    tui_draw_row_band(row_rect,
+                      tui_active_theme()->surface_container_lowest,
+                      tui_active_theme()->outline_variant);
     copy_sp_str_to_cstr(filename, file_buf, sizeof(file_buf), "[No Name]");
-    make_session_summary(right_buf, sizeof(right_buf));
-    snprintf(title_buf, sizeof(title_buf), "TED//STUDIO %s", iui_tui_theme_name().data);
+    make_deck_summary(deck_buf, sizeof(deck_buf));
+    make_file_state_summary(right_buf, sizeof(right_buf));
 
     iui_box_begin(S.ctx, &(iui_box_config_t){
         .direction = IUI_DIR_ROW,
@@ -813,47 +885,40 @@ static void tui_draw_header_row(iui_rect_t row_rect) {
         .align = IUI_CROSS_STRETCH,
     });
 
-    iui_rect_t mark = iui_box_next(S.ctx);
-    S.renderer.draw_box(mark, 0.0f, tui_active_theme()->surface_container_high, S.renderer.user);
-    S.renderer.draw_circle(mark.x + 8.0f, mark.y + 8.0f, 3.0f, 0, tui_active_theme()->primary, 1.0f, S.renderer.user);
-    S.renderer.draw_arc(mark.x + 8.0f, mark.y + 8.0f, 5.0f, -0.8f, 1.1f, 1.0f, tui_active_theme()->secondary, S.renderer.user);
+    tui_draw_compact_chip(iui_box_next(S.ctx), "TED", true, tui_active_theme()->primary, false);
+    tui_draw_compact_chip(iui_box_next(S.ctx), deck_buf, true, tui_active_theme()->outline, false);
 
-    tui_draw_compact_chip(iui_box_next(S.ctx), title_buf, true, tui_active_theme()->primary, false);
-    tui_draw_compact_chip(iui_box_next(S.ctx), file_buf, E.buffer.modified, tui_active_theme()->secondary_container, false);
+    iui_rect_t file_rect = iui_box_next(S.ctx);
+    tui_draw_compact_chip(file_rect, file_buf, E.buffer.modified, tui_active_theme()->surface_container_highest, false);
 
-    iui_rect_t right = iui_box_next(S.ctx);
-    if (tui_mouse_submit(right)) {
-        tui_toggle_focus();
-    }
-    tui_draw_compact_chip(right, right_buf, S.focused, tui_active_theme()->tertiary_container, true);
+    tui_draw_compact_chip(iui_box_next(S.ctx), right_buf, E.buffer.modified,
+                          tui_active_theme()->tertiary_container, false);
     iui_box_end(S.ctx);
 }
 
 static void tui_draw_controls_row(iui_rect_t row_rect) {
-    static const c8 *tab_labels[] = { "workspace", "sketch", "runtime" };
-    static const c8 *toggle_labels[] = { "lines", "syntax", "wrap", "focus", "clear" };
-    bool toggle_states[] = {
-        E.config.show_line_numbers,
-        E.config.syntax_enabled,
-        E.config.auto_wrap,
-        S.focused,
-        false,
-    };
+    static const c8 *tab_labels[] = { "txt", "shape", "dock" };
+    bool sketch_clear_ready = sketch_is_enabled() ||
+                              sketch_shape_count() > 0 ||
+                              sketch_stroke_point_count() > 0;
     u32 accents[] = {
         tui_active_theme()->primary_container,
         tui_active_theme()->secondary_container,
-        tui_active_theme()->surface_container_high,
         tui_active_theme()->tertiary_container,
-        tui_active_theme()->secondary_container,
+        tui_active_theme()->secondary,
     };
     iui_sizing_t sizes[] = {
         IUI_GROW(2), IUI_GROW(2), IUI_GROW(2),
-        IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1),
+        IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1),
     };
+
+    tui_draw_row_band(row_rect,
+                      tui_active_theme()->surface_container_low,
+                      tui_active_theme()->outline_variant);
 
     iui_box_begin(S.ctx, &(iui_box_config_t){
         .direction = IUI_DIR_ROW,
-        .child_count = 8,
+        .child_count = 7,
         .sizes = sizes,
         .gap = 1.0f,
         .padding = IUI_PAD_XY(0.0f, 0.0f),
@@ -868,54 +933,80 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
         tui_draw_compact_chip(rect, tab_labels[i], active, tui_active_theme()->primary, true);
     }
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         iui_rect_t rect = iui_box_next(S.ctx);
+        c8 label[24];
+        bool active = false;
         if (tui_mouse_submit(rect)) {
             switch (i) {
             case 0: tui_toggle_line_numbers(); break;
             case 1: tui_toggle_syntax(); break;
-            case 2: tui_toggle_wrap(); break;
-            case 3: tui_toggle_focus(); break;
-            case 4:
+            case 2: tui_toggle_focus(); break;
+            case 3:
                 sketch_clear();
                 editor_set_message("Sketch canvas cleared");
                 break;
             default: break;
             }
         }
-        tui_draw_compact_chip(rect, toggle_labels[i], toggle_states[i], accents[i], true);
+        switch (i) {
+        case 0:
+            snprintf(label, sizeof(label), "num %s", E.config.show_line_numbers ? "on" : "off");
+            active = E.config.show_line_numbers;
+            break;
+        case 1:
+            snprintf(label, sizeof(label), "syn %s", E.config.syntax_enabled ? "on" : "off");
+            active = E.config.syntax_enabled;
+            break;
+        case 2:
+            snprintf(label, sizeof(label), "ui %s", S.focused ? "on" : "off");
+            active = S.focused;
+            break;
+        case 3:
+            snprintf(label, sizeof(label), "clear");
+            active = sketch_clear_ready;
+            break;
+        default:
+            label[0] = '\0';
+            break;
+        }
+        tui_draw_compact_chip(rect, label, active, accents[i], true);
     }
 
     iui_box_end(S.ctx);
 }
 
 static void tui_draw_status_row(iui_rect_t row_rect) {
-    c8 mode_buf[24];
-    c8 geometry_buf[48];
-    c8 plugins_buf[32];
+    c8 mode_buf[32];
+    c8 geometry_buf[56];
+    c8 plugins_buf[40];
     c8 session_buf[64];
     u32 shapes = sketch_shape_count();
     u32 stroke_pts = sketch_stroke_point_count();
 
+    tui_draw_row_band(row_rect,
+                      tui_active_theme()->surface_container_high,
+                      tui_active_theme()->outline);
+
     if (sketch_is_enabled()) {
-        copy_sp_str_to_cstr(sketch_mode_name(), mode_buf, sizeof(mode_buf), "auto");
+        snprintf(mode_buf, sizeof(mode_buf), "shape %s", sketch_kind_label(sketch_preferred_kind()));
     } else {
-        snprintf(mode_buf, sizeof(mode_buf), "%s", editor_mode_label());
+        snprintf(mode_buf, sizeof(mode_buf), "text %s", editor_mode_label());
     }
 
     if (sketch_is_enabled()) {
         if (sketch_has_preview_shape()) {
-            snprintf(geometry_buf, sizeof(geometry_buf), "shape %u  %s @ %.3f",
+            snprintf(geometry_buf, sizeof(geometry_buf), "bank %u  %s  %.3f",
                      shapes,
                      sketch_kind_label(sketch_preview_kind()),
                      sketch_preview_score());
         } else if (stroke_pts > 0) {
-            snprintf(geometry_buf, sizeof(geometry_buf), "stroke in progress  %u pts", stroke_pts);
+            snprintf(geometry_buf, sizeof(geometry_buf), "trace %u pts", stroke_pts);
         } else {
-            snprintf(geometry_buf, sizeof(geometry_buf), "shape bank %u  idle", shapes);
+            snprintf(geometry_buf, sizeof(geometry_buf), "bank %u  idle", shapes);
         }
     } else {
-        snprintf(geometry_buf, sizeof(geometry_buf), "text workspace");
+        snprintf(geometry_buf, sizeof(geometry_buf), "buffer");
     }
 
     make_plugin_summary(plugins_buf, sizeof(plugins_buf));
@@ -931,11 +1022,54 @@ static void tui_draw_status_row(iui_rect_t row_rect) {
         .align = IUI_CROSS_STRETCH,
     });
 
-    tui_draw_compact_segment(iui_box_next(S.ctx), "mode", mode_buf, tui_active_theme()->primary);
-    tui_draw_compact_segment(iui_box_next(S.ctx), "geometry", geometry_buf, tui_active_theme()->secondary);
-    tui_draw_compact_segment(iui_box_next(S.ctx), "plugins", plugins_buf, tui_active_theme()->tertiary);
-    tui_draw_compact_segment(iui_box_next(S.ctx), "session", session_buf, tui_active_theme()->outline);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "deck", mode_buf, tui_active_theme()->primary);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "buf", geometry_buf, tui_active_theme()->secondary);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "ext", plugins_buf, tui_active_theme()->tertiary);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "sess", session_buf, tui_active_theme()->outline);
 
+    iui_box_end(S.ctx);
+}
+
+static void tui_draw_runtime_dock_row(iui_rect_t row_rect) {
+    c8 plugins_buf[40];
+    c8 recognizers_buf[40];
+    c8 targets_buf[40];
+    c8 action_buf[24];
+    sp_str_t plugins = ext_list_loaded_plugins();
+    sp_str_t recognizers = ext_list_recognizers();
+    sp_str_t targets = input_list_operator_targets();
+    bool dock_hot = false;
+    iui_sizing_t sizes[] = { IUI_GROW(2), IUI_GROW(2), IUI_GROW(2), IUI_GROW(1) };
+
+    tui_draw_row_band(row_rect,
+                      tui_active_theme()->surface_container_high,
+                      tui_active_theme()->outline);
+    make_runtime_list_summary(plugins, ext_loaded_plugin_count(), "none", plugins_buf, sizeof(plugins_buf));
+    make_runtime_list_summary(recognizers, ext_recognizer_count(), "none", recognizers_buf, sizeof(recognizers_buf));
+    make_runtime_list_summary(targets, input_operator_target_count(), "none", targets_buf, sizeof(targets_buf));
+    snprintf(action_buf, sizeof(action_buf), "%s", ext_loaded_plugin_count() > 0 ? "reload" : "scan");
+
+    iui_box_begin(S.ctx, &(iui_box_config_t){
+        .direction = IUI_DIR_ROW,
+        .child_count = 4,
+        .sizes = sizes,
+        .gap = 1.0f,
+        .padding = IUI_PAD_XY(0.0f, 0.0f),
+        .cross = row_rect.height,
+        .align = IUI_CROSS_STRETCH,
+    });
+
+    tui_draw_compact_segment(iui_box_next(S.ctx), "plug", plugins_buf, tui_active_theme()->primary);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "rec", recognizers_buf, tui_active_theme()->secondary);
+    tui_draw_compact_segment(iui_box_next(S.ctx), "tgt", targets_buf, tui_active_theme()->tertiary);
+
+    iui_rect_t action_rect = iui_box_next(S.ctx);
+    dock_hot = tui_mouse_submit(action_rect);
+    if (dock_hot) {
+        tui_reload_runtime_dock();
+    }
+    tui_draw_compact_chip(action_rect, action_buf, ext_loaded_plugin_count() > 0,
+                          tui_active_theme()->primary_container, true);
     iui_box_end(S.ctx);
 }
 
@@ -958,7 +1092,11 @@ void iui_tui_draw_toolbar(void) {
         });
         tui_draw_header_row(iui_box_next(S.ctx));
         tui_draw_controls_row(iui_box_next(S.ctx));
-        tui_draw_status_row(iui_box_next(S.ctx));
+        if (S.active_tab == 2) {
+            tui_draw_runtime_dock_row(iui_box_next(S.ctx));
+        } else {
+            tui_draw_status_row(iui_box_next(S.ctx));
+        }
         iui_box_end(S.ctx);
         iui_end_window(S.ctx);
     }

@@ -13,31 +13,35 @@
 
 ## Current Panel
 
-顶部控制带固定 3 行：
+顶部控制带固定 3 行，但风格应偏控制台，不做高饱和彩块：
 
 ```text
-+ TED STUDIO - convex gesture editor ------------------------------+
-[lines:on] [syntax:on] [wrap:off] [focus:off] [sketch:on] [clear]
-| mode <auto> | canvas <gesture> | runtime <libiui+mquickjs> ... +
+ TED ...... txt deck ......... program.md ........ armed clean
+ txt ...... shape ............ dock .............. num on syn on
+ deck text normal  buf bank 0  ext p0 r0 t0  sess c ts:on llm:off
 ```
 
 ## Visual Language
 
-- 外层使用规则边界线，形成“设备感”
-- 中间使用按钮块，形成“可操作感”
-- 底部使用状态胶囊，形成“当前工作上下文”
+- 外层使用低对比底色和单色线条，形成“设备感”
+- 中间使用短标签和横线反馈，形成“可操作感”
+- 底部使用扁平状态段，形成“当前工作上下文”
 - sketch 模式开启时，不再只是改一个字，而是让整个顶部信息转向绘图语义
+- runtime 选中时，第三排直接变成插件坞，显示 plugin / recognizer / target / reload
+- 所有矢量线条在 terminal backend 内都应尽量退化为 `.`，避免 `# * +` 造成脏感
 
 ## Button Semantics
 
-- `[lines:on]` / `[syntax:on]` / `[wrap:off]`
+- `[nums on]` / `[syntax on]` / `[wrap off]`
   - 编辑器基础显示能力
-- `[focus:on/off]`
+- `[focus on/off]`
   - libiui 键盘焦点状态
-- `[sketch:on/off]`
-  - 文本工作区与几何工作区切换
-- `[clear]`
+- `[text deck]` / `[shape lab]` / `[runtime]`
+  - 工作台主区域切换
+- `[wipe canvas]`
   - 清空几何画布
+- runtime dock action
+  - 至少要提供一次“扫描或刷新插件坞”的显式动作
 
 ## Optimization Items
 
