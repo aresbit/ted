@@ -126,6 +126,12 @@ next_iteration_brief() {
   fi
 }
 
+history_block() {
+  if [ -x "scripts/autoresearch-history.sh" ] || [ -f "scripts/autoresearch-history.sh" ]; then
+    sh scripts/autoresearch-history.sh
+  fi
+}
+
 metric_now="$(metric_value)"
 worktree_now="$(worktree_state)"
 best_metric="$(best_recorded_metric)"
@@ -144,6 +150,10 @@ else
   printf '%s\n' 'Loop safety: git metadata unavailable.'
 fi
 printf 'Last recorded outcome: %s\n' "$last_result"
+history="$(history_block)"
+if [ -n "$history" ]; then
+  printf '%s\n' "$history"
+fi
 module_block="$(module_summary)"
 if [ -n "$module_block" ]; then
   printf '%s\n' 'Active module:'

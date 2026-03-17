@@ -18,6 +18,7 @@ NEXT_FOCUS_FILE="$RESULTS_DIR/next-focus.txt"
 STATUS_SNAPSHOT_FILE="$RESULTS_DIR/status.txt"
 NEXT_BRIEF_FILE="$RESULTS_DIR/next-brief.txt"
 MODULE_SUMMARY_FILE="$RESULTS_DIR/module.txt"
+HISTORY_SNAPSHOT_FILE="$RESULTS_DIR/history.txt"
 
 usage() {
   cat <<'EOF'
@@ -184,6 +185,22 @@ write_module_summary() {
   current_module_summary > "$MODULE_SUMMARY_FILE"
 }
 
+current_history_summary() {
+  if [ -x "scripts/autoresearch-history.sh" ] || [ -f "scripts/autoresearch-history.sh" ]; then
+    sh scripts/autoresearch-history.sh
+    return
+  fi
+
+  cat <<'EOF'
+Autoresearch history:
+Recent trend: no iterations recorded yet
+EOF
+}
+
+write_history_summary() {
+  current_history_summary > "$HISTORY_SNAPSHOT_FILE"
+}
+
 current_next_brief() {
   if [ -x "scripts/autoresearch-next.sh" ] || [ -f "scripts/autoresearch-next.sh" ]; then
     sh scripts/autoresearch-next.sh
@@ -287,8 +304,12 @@ build_prompt() {
   status_block="$(cat "$STATUS_SNAPSHOT_FILE" 2>/dev/null || true)"
   next_brief_block="$(cat "$NEXT_BRIEF_FILE" 2>/dev/null || true)"
   module_block="$(module_prompt_block)"
+  history_block="$(cat "$HISTORY_SNAPSHOT_FILE" 2>/dev/null || true)"
   if [ -z "$status_block" ]; then
     status_block="$(current_status_snapshot "$baseline")"
+  fi
+  if [ -z "$history_block" ]; then
+    history_block="$(current_history_summary)"
   fi
   if printf '%s\n' "$status_block" | rg -q '^Next iteration brief:'; then
     next_brief_block=""
@@ -330,6 +351,8 @@ Current priority:
 
 Autoresearch repo state:
 $status_block
+
+$history_block
 
 $next_brief_block
 EOF
@@ -410,6 +433,7 @@ write_current_focus
 write_next_brief
 write_status_snapshot "$baseline_metric"
 write_module_summary
+write_history_summary
 printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
 
 if [ "$PRINT_ONLY" -eq 1 ]; then
@@ -462,6 +486,7 @@ while [ "$i" -le "$ITERATIONS" ]; do
   write_next_brief
   write_status_snapshot "$baseline_metric"
   write_module_summary
+  write_history_summary
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))
 done
