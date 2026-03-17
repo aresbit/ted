@@ -64,6 +64,7 @@ add_if_file "scripts/autoresearch-doctor.sh" 5
 add_if_file "scripts/autoresearch-rubric.sh" 5
 add_if_file "scripts/autoresearch-decision.sh" 5
 add_if_file "scripts/autoresearch-capabilities.sh" 5
+add_if_file "scripts/autoresearch-priority.sh" 5
 add_if_rg 'mquickjs-runtime|tree-sitter-intelligence|libiui-workbench|convex-sketch|llm-copilot' "scripts/autoresearch-focus.sh" 5
 add_if_rg 'autoresearch/protocol\.md|autoresearch/workflows\.md|scripts/autoresearch-module\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'sanitize_note|non-iteration summary captured|last-output\.txt' "scripts/autoresearch-loop.sh" 5
@@ -78,5 +79,8 @@ add_if_rg 'DECISION_SNAPSHOT_FILE|autoresearch-decision\.sh|current_decision_sum
 add_if_rg 'Autoresearch capabilities:|PASS js|PASS ts|PASS ui|PASS cvx|PASS llm' "scripts/autoresearch-capabilities.sh" 5
 add_if_rg 'capabilities_block|autoresearch-capabilities\.sh' "scripts/autoresearch-status.sh" 5
 add_if_rg 'CAPABILITIES_SNAPSHOT_FILE|autoresearch-capabilities\.sh|current_capabilities_summary' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'Autoresearch priority:|1\. autoresearch automation|1\. ui workbench|1\. convex sketch' "scripts/autoresearch-priority.sh" 5
+add_if_rg 'priority_block|autoresearch-priority\.sh' "scripts/autoresearch-status.sh" 5
+add_if_rg 'PRIORITY_SNAPSHOT_FILE|autoresearch-priority\.sh|current_priority_summary' "scripts/autoresearch-loop.sh" 5
 
 printf '%s\n' "$score"
