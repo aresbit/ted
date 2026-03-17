@@ -263,6 +263,25 @@ append_result() {
     "$ts" "$iter" "$baseline" "$metric" "$status" "$guard" "$commit" "$note" >> "$RESULTS_FILE"
 }
 
+sanitize_note() {
+  raw="$1"
+  note="$(printf '%s\n' "$raw" | awk 'NF { print; exit }')"
+  note="$(printf '%s\n' "$note" | sed 's/\[[^]]*\]([^)]*)//g' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')"
+  if [ -z "$note" ]; then
+    printf '%s\n' 'no agent summary captured'
+    return
+  fi
+
+  case "$note" in
+    提交已完成*|Autoresearch\ ran\ in\ observe\ mode.*|如果你要*|If\ you\ want,*)
+      printf '%s\n' 'non-iteration summary captured; review .autoresearch/last-output.txt'
+      return
+      ;;
+  esac
+
+  printf '%s\n' "$(printf '%s' "$note" | cut -c1-240)"
+}
+
 build_prompt() {
   baseline="$1"
   status_block="$(cat "$STATUS_SNAPSHOT_FILE" 2>/dev/null || true)"
@@ -422,7 +441,7 @@ while [ "$i" -le "$ITERATIONS" ]; do
     guard_status="fail"
   fi
 
-  note="$(tr '\n' ' ' < "$LAST_OUTPUT_FILE" | sed 's/[[:space:]]\+/ /g' | cut -c1-240)"
+  note="$(sanitize_note "$(cat "$LAST_OUTPUT_FILE" 2>/dev/null || true)")"
 
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
     status="observe"

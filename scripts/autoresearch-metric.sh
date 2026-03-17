@@ -61,5 +61,6 @@ add_if_file "autoresearch/protocol.md" 5
 add_if_file "autoresearch/workflows.md" 5
 add_if_rg 'mquickjs-runtime|tree-sitter-intelligence|libiui-workbench|convex-sketch|llm-copilot' "scripts/autoresearch-focus.sh" 5
 add_if_rg 'autoresearch/protocol\.md|autoresearch/workflows\.md|scripts/autoresearch-module\.sh' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'sanitize_note|non-iteration summary captured|last-output\.txt' "scripts/autoresearch-loop.sh" 5
 
 printf '%s\n' "$score"
