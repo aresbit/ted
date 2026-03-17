@@ -144,6 +144,12 @@ rubric_block() {
   fi
 }
 
+capabilities_block() {
+  if [ -x "scripts/autoresearch-capabilities.sh" ] || [ -f "scripts/autoresearch-capabilities.sh" ]; then
+    sh scripts/autoresearch-capabilities.sh
+  fi
+}
+
 last_decision_args() {
   if [ ! -f "$RESULTS_FILE" ]; then
     printf '%s\t%s\t%s\n' "$metric_now" "$metric_now" "pass"
@@ -209,6 +215,10 @@ fi
 rubric="$(rubric_block)"
 if [ -n "$rubric" ]; then
   printf '%s\n' "$rubric"
+fi
+capabilities="$(capabilities_block)"
+if [ -n "$capabilities" ]; then
+  printf '%s\n' "$capabilities"
 fi
 decision="$(decision_block)"
 if [ -n "$decision" ]; then

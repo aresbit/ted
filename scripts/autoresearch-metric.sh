@@ -63,6 +63,7 @@ add_if_file "scripts/autoresearch-history.sh" 5
 add_if_file "scripts/autoresearch-doctor.sh" 5
 add_if_file "scripts/autoresearch-rubric.sh" 5
 add_if_file "scripts/autoresearch-decision.sh" 5
+add_if_file "scripts/autoresearch-capabilities.sh" 5
 add_if_rg 'mquickjs-runtime|tree-sitter-intelligence|libiui-workbench|convex-sketch|llm-copilot' "scripts/autoresearch-focus.sh" 5
 add_if_rg 'autoresearch/protocol\.md|autoresearch/workflows\.md|scripts/autoresearch-module\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'sanitize_note|non-iteration summary captured|last-output\.txt' "scripts/autoresearch-loop.sh" 5
@@ -74,5 +75,8 @@ add_if_rg 'Autoresearch rubric:|PASS build|PASS smoke|PASS module' "scripts/auto
 add_if_rg 'RUBRIC_SNAPSHOT_FILE|autoresearch-rubric\.sh|current_rubric_summary' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Autoresearch decision:|Recommend: keep|Recommend: discard|Delta:' "scripts/autoresearch-status.sh" 5
 add_if_rg 'DECISION_SNAPSHOT_FILE|autoresearch-decision\.sh|current_decision_summary' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'Autoresearch capabilities:|PASS js|PASS ts|PASS ui|PASS cvx|PASS llm' "scripts/autoresearch-capabilities.sh" 5
+add_if_rg 'capabilities_block|autoresearch-capabilities\.sh' "scripts/autoresearch-status.sh" 5
+add_if_rg 'CAPABILITIES_SNAPSHOT_FILE|autoresearch-capabilities\.sh|current_capabilities_summary' "scripts/autoresearch-loop.sh" 5
 
 printf '%s\n' "$score"

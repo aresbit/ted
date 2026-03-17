@@ -22,6 +22,7 @@ HISTORY_SNAPSHOT_FILE="$RESULTS_DIR/history.txt"
 DOCTOR_SNAPSHOT_FILE="$RESULTS_DIR/doctor.txt"
 RUBRIC_SNAPSHOT_FILE="$RESULTS_DIR/rubric.txt"
 DECISION_SNAPSHOT_FILE="$RESULTS_DIR/decision.txt"
+CAPABILITIES_SNAPSHOT_FILE="$RESULTS_DIR/capabilities.txt"
 
 usage() {
   cat <<'EOF'
@@ -259,6 +260,22 @@ write_decision_summary() {
   current_decision_summary "$1" "$2" "$3" > "$DECISION_SNAPSHOT_FILE"
 }
 
+current_capabilities_summary() {
+  if [ -x "scripts/autoresearch-capabilities.sh" ] || [ -f "scripts/autoresearch-capabilities.sh" ]; then
+    sh scripts/autoresearch-capabilities.sh
+    return
+  fi
+
+  cat <<'EOF'
+Autoresearch capabilities:
+MISS overview unavailable
+EOF
+}
+
+write_capabilities_summary() {
+  current_capabilities_summary > "$CAPABILITIES_SNAPSHOT_FILE"
+}
+
 current_next_brief() {
   if [ -x "scripts/autoresearch-next.sh" ] || [ -f "scripts/autoresearch-next.sh" ]; then
     sh scripts/autoresearch-next.sh
@@ -366,6 +383,7 @@ build_prompt() {
   doctor_block="$(cat "$DOCTOR_SNAPSHOT_FILE" 2>/dev/null || true)"
   rubric_block="$(cat "$RUBRIC_SNAPSHOT_FILE" 2>/dev/null || true)"
   decision_block="$(cat "$DECISION_SNAPSHOT_FILE" 2>/dev/null || true)"
+  capabilities_block="$(cat "$CAPABILITIES_SNAPSHOT_FILE" 2>/dev/null || true)"
   if [ -z "$status_block" ]; then
     status_block="$(current_status_snapshot "$baseline")"
   fi
@@ -380,6 +398,9 @@ build_prompt() {
   fi
   if [ -z "$decision_block" ]; then
     decision_block="$(current_decision_summary "$baseline" "$baseline" "pass")"
+  fi
+  if [ -z "$capabilities_block" ]; then
+    capabilities_block="$(current_capabilities_summary)"
   fi
   if printf '%s\n' "$status_block" | rg -q '^Next iteration brief:'; then
     next_brief_block=""
@@ -427,6 +448,8 @@ $history_block
 $doctor_block
 
 $rubric_block
+
+$capabilities_block
 
 $decision_block
 
@@ -512,6 +535,7 @@ write_module_summary
 write_history_summary
 write_doctor_summary
 write_rubric_summary
+write_capabilities_summary
 write_decision_summary "$baseline_metric" "$baseline_metric" "pass"
 printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
 
@@ -568,6 +592,7 @@ while [ "$i" -le "$ITERATIONS" ]; do
   write_history_summary
   write_doctor_summary
   write_rubric_summary
+  write_capabilities_summary
   write_decision_summary "$baseline_metric" "$new_metric" "$guard_status"
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))
