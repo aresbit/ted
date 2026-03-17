@@ -156,6 +156,12 @@ priority_block() {
   fi
 }
 
+memory_block() {
+  if [ -x "scripts/autoresearch-memory.sh" ] || [ -f "scripts/autoresearch-memory.sh" ]; then
+    sh scripts/autoresearch-memory.sh
+  fi
+}
+
 last_decision_args() {
   if [ ! -f "$RESULTS_FILE" ]; then
     printf '%s\t%s\t%s\n' "$metric_now" "$metric_now" "pass"
@@ -229,6 +235,10 @@ fi
 priority="$(priority_block)"
 if [ -n "$priority" ]; then
   printf '%s\n' "$priority"
+fi
+memory="$(memory_block)"
+if [ -n "$memory" ]; then
+  printf '%s\n' "$memory"
 fi
 decision="$(decision_block)"
 if [ -n "$decision" ]; then

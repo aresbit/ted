@@ -24,6 +24,7 @@ RUBRIC_SNAPSHOT_FILE="$RESULTS_DIR/rubric.txt"
 DECISION_SNAPSHOT_FILE="$RESULTS_DIR/decision.txt"
 CAPABILITIES_SNAPSHOT_FILE="$RESULTS_DIR/capabilities.txt"
 PRIORITY_SNAPSHOT_FILE="$RESULTS_DIR/priority.txt"
+MEMORY_SNAPSHOT_FILE="$RESULTS_DIR/memory.txt"
 
 usage() {
   cat <<'EOF'
@@ -293,6 +294,22 @@ write_priority_summary() {
   current_priority_summary > "$PRIORITY_SNAPSHOT_FILE"
 }
 
+current_memory_summary() {
+  if [ -x "scripts/autoresearch-memory.sh" ] || [ -f "scripts/autoresearch-memory.sh" ]; then
+    sh scripts/autoresearch-memory.sh
+    return
+  fi
+
+  cat <<'EOF'
+Autoresearch memory:
+MISS overview unavailable
+EOF
+}
+
+write_memory_summary() {
+  current_memory_summary > "$MEMORY_SNAPSHOT_FILE"
+}
+
 current_next_brief() {
   if [ -x "scripts/autoresearch-next.sh" ] || [ -f "scripts/autoresearch-next.sh" ]; then
     sh scripts/autoresearch-next.sh
@@ -402,6 +419,7 @@ build_prompt() {
   decision_block="$(cat "$DECISION_SNAPSHOT_FILE" 2>/dev/null || true)"
   capabilities_block="$(cat "$CAPABILITIES_SNAPSHOT_FILE" 2>/dev/null || true)"
   priority_block="$(cat "$PRIORITY_SNAPSHOT_FILE" 2>/dev/null || true)"
+  memory_block="$(cat "$MEMORY_SNAPSHOT_FILE" 2>/dev/null || true)"
   if [ -z "$status_block" ]; then
     status_block="$(current_status_snapshot "$baseline")"
   fi
@@ -422,6 +440,9 @@ build_prompt() {
   fi
   if [ -z "$priority_block" ]; then
     priority_block="$(current_priority_summary)"
+  fi
+  if [ -z "$memory_block" ]; then
+    memory_block="$(current_memory_summary)"
   fi
   if printf '%s\n' "$status_block" | rg -q '^Next iteration brief:'; then
     next_brief_block=""
@@ -473,6 +494,8 @@ $rubric_block
 $capabilities_block
 
 $priority_block
+
+$memory_block
 
 $decision_block
 
@@ -560,6 +583,7 @@ write_doctor_summary
 write_rubric_summary
 write_capabilities_summary
 write_priority_summary
+write_memory_summary
 write_decision_summary "$baseline_metric" "$baseline_metric" "pass"
 printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
 
@@ -618,6 +642,7 @@ while [ "$i" -le "$ITERATIONS" ]; do
   write_rubric_summary
   write_capabilities_summary
   write_priority_summary
+  write_memory_summary
   write_decision_summary "$baseline_metric" "$new_metric" "$guard_status"
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))

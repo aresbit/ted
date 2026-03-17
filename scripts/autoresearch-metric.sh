@@ -65,6 +65,7 @@ add_if_file "scripts/autoresearch-rubric.sh" 5
 add_if_file "scripts/autoresearch-decision.sh" 5
 add_if_file "scripts/autoresearch-capabilities.sh" 5
 add_if_file "scripts/autoresearch-priority.sh" 5
+add_if_file "scripts/autoresearch-memory.sh" 5
 add_if_rg 'mquickjs-runtime|tree-sitter-intelligence|libiui-workbench|convex-sketch|llm-copilot' "scripts/autoresearch-focus.sh" 5
 add_if_rg 'autoresearch/protocol\.md|autoresearch/workflows\.md|scripts/autoresearch-module\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'sanitize_note|non-iteration summary captured|last-output\.txt' "scripts/autoresearch-loop.sh" 5
@@ -82,5 +83,8 @@ add_if_rg 'CAPABILITIES_SNAPSHOT_FILE|autoresearch-capabilities\.sh|current_capa
 add_if_rg 'Autoresearch priority:|1\. autoresearch automation|1\. ui workbench|1\. convex sketch' "scripts/autoresearch-priority.sh" 5
 add_if_rg 'priority_block|autoresearch-priority\.sh' "scripts/autoresearch-status.sh" 5
 add_if_rg 'PRIORITY_SNAPSHOT_FILE|autoresearch-priority\.sh|current_priority_summary' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'Autoresearch memory:|check_file status|check_file brief|check_file decision|check_file capabilities' "scripts/autoresearch-memory.sh" 5
+add_if_rg 'memory_block|autoresearch-memory\.sh' "scripts/autoresearch-status.sh" 5
+add_if_rg 'MEMORY_SNAPSHOT_FILE|autoresearch-memory\.sh|current_memory_summary' "scripts/autoresearch-loop.sh" 5
 
 printf '%s\n' "$score"
