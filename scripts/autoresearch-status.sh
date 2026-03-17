@@ -144,6 +144,42 @@ rubric_block() {
   fi
 }
 
+last_decision_args() {
+  if [ ! -f "$RESULTS_FILE" ]; then
+    printf '%s\t%s\t%s\n' "$metric_now" "$metric_now" "pass"
+    return
+  fi
+
+  if ! awk -F '\t' 'NR > 1 { found = 1 } END { exit(found ? 0 : 1) }' "$RESULTS_FILE"; then
+    printf '%s\t%s\t%s\n' "$metric_now" "$metric_now" "pass"
+    return
+  fi
+
+  awk -F '\t' '
+    NR == 1 { next }
+    { last = $0 }
+    END {
+      split(last, f, "\t")
+      guard = f[6]
+      if (guard == "") guard = "pass"
+      printf "%s\t%s\t%s\n", f[3], f[4], guard
+    }
+  ' "$RESULTS_FILE"
+}
+
+decision_block() {
+  if [ -x "scripts/autoresearch-decision.sh" ] || [ -f "scripts/autoresearch-decision.sh" ]; then
+    decision_args="$(last_decision_args)"
+    decision_baseline="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $1 }')"
+    decision_metric="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $2 }')"
+    decision_guard="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $3 }')"
+    sh scripts/autoresearch-decision.sh \
+      --baseline "$decision_baseline" \
+      --metric "$decision_metric" \
+      --guard "$decision_guard"
+  fi
+}
+
 metric_now="$(metric_value)"
 worktree_now="$(worktree_state)"
 best_metric="$(best_recorded_metric)"
@@ -173,6 +209,10 @@ fi
 rubric="$(rubric_block)"
 if [ -n "$rubric" ]; then
   printf '%s\n' "$rubric"
+fi
+decision="$(decision_block)"
+if [ -n "$decision" ]; then
+  printf '%s\n' "$decision"
 fi
 module_block="$(module_summary)"
 if [ -n "$module_block" ]; then
