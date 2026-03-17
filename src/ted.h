@@ -295,6 +295,7 @@ bool treesitter_is_enabled(void);
 bool treesitter_is_available(void);
 sp_str_t treesitter_status(void);
 bool treesitter_highlight_buffer(buffer_t *buf);
+sp_str_t treesitter_describe_cursor(buffer_t *buf, u32 row, u32 col);
 
 // search.c
 void search_init(void);

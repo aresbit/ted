@@ -124,6 +124,7 @@ To add a command:
   - `:syntax tree on`
   - `:syntax tree off`
   - `:syntax tree status`
+  - `:syntax tree inspect`
 - Current rendering strategy:
   - C language now uses tree-sitter node mapping to TED `HL_*` colors
   - unsupported languages still fallback to existing C tokenizer

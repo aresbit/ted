@@ -182,8 +182,11 @@ static bool cmd_syntax(sp_str_t arg) {
     } else if (sp_str_equal(arg, sp_str_lit("tree status"))) {
         sp_str_t s = treesitter_status();
         editor_set_message("tree-sitter: %.*s", (int)s.len, s.data);
+    } else if (sp_str_equal(arg, sp_str_lit("tree inspect"))) {
+        sp_str_t s = treesitter_describe_cursor(&E.buffer, E.cursor.row, E.cursor.col);
+        editor_set_message("tree-sitter: %.*s", (int)s.len, s.data);
     } else {
-        editor_set_message("Usage: :syntax on|off|tree on|tree off|tree status");
+        editor_set_message("Usage: :syntax on|off|tree on|tree off|tree status|tree inspect");
     }
     return true;
 }

@@ -275,3 +275,48 @@ bool treesitter_highlight_buffer(buffer_t *buf) {
     ts_set_status("highlighted %s (%u lines)", G_ts.active_grammar, buf->line_count);
     return true;
 }
+
+sp_str_t treesitter_describe_cursor(buffer_t *buf, u32 row, u32 col) {
+    if (!buf) return sp_str_lit("no buffer");
+    if (!treesitter_is_enabled()) return sp_str_lit("tree-sitter disabled");
+    if (!ts_select_language_for_buffer(buf)) return sp_format("no grammar ({})", SP_FMT_STR(G_ts.last_status));
+
+    if (!ts_parser_set_language(G_ts.parser, G_ts.active_lang)) {
+        return sp_format("grammar error ({})", SP_FMT_CSTR(G_ts.active_grammar));
+    }
+
+    sp_str_t text = ts_buffer_text(buf);
+    TSTree *tree = ts_parser_parse_string(G_ts.parser, SP_NULLPTR, text.data, text.len);
+    if (!tree) {
+        return sp_format("parse failed ({})", SP_FMT_CSTR(G_ts.active_grammar));
+    }
+
+    TSPoint point = { .row = row, .column = col };
+    TSNode root = ts_tree_root_node(tree);
+    TSNode node = ts_node_descendant_for_point_range(root, point, point);
+    if (ts_node_is_null(node)) {
+        ts_tree_delete(tree);
+        return sp_str_lit("no node at cursor");
+    }
+
+    const c8 *type = ts_node_type(node);
+    TSPoint start = ts_node_start_point(node);
+    TSPoint end = ts_node_end_point(node);
+    TSNode parent = ts_node_parent(node);
+    const c8 *parent_type = ts_node_is_null(parent) ? "root" : ts_node_type(parent);
+
+    sp_str_t out = sp_format(
+        "{}:{}:{} {} [{}:{}-{}:{}] parent:{}",
+        SP_FMT_CSTR(G_ts.active_grammar),
+        SP_FMT_U32(row + 1),
+        SP_FMT_U32(col + 1),
+        SP_FMT_CSTR(type ? type : "unknown"),
+        SP_FMT_U32(start.row + 1),
+        SP_FMT_U32(start.column + 1),
+        SP_FMT_U32(end.row + 1),
+        SP_FMT_U32(end.column + 1),
+        SP_FMT_CSTR(parent_type ? parent_type : "root"));
+
+    ts_tree_delete(tree);
+    return out;
+}
