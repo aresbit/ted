@@ -142,10 +142,14 @@ rg -q 'syntax_highlight_buffer' src/display.c || {
 
 printf '[5/5] narrow terminal startup (libiui grid regression)\n'
 if command -v script >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
-  timeout 10 script -qefc "stty cols 44 rows 18; printf 'q' | ./bin/ted >/dev/null 2>&1" /dev/null || {
-    echo 'narrow terminal startup check failed' >&2
-    exit 1
-  }
+  if script -qefc 'exit 0' /dev/null >/dev/null 2>&1; then
+    timeout 10 script -qefc "stty cols 44 rows 18; printf 'q' | ./bin/ted >/dev/null 2>&1" /dev/null || {
+      echo 'narrow terminal startup check failed' >&2
+      exit 1
+    }
+  else
+    echo 'skip narrow terminal startup check (script PTY unavailable)'
+  fi
 else
   echo 'skip narrow terminal startup check (script/timeout missing)'
 fi

@@ -16,6 +16,8 @@ LAST_OUTPUT_FILE="$RESULTS_DIR/last-output.txt"
 LAST_PROMPT_FILE="$RESULTS_DIR/last-prompt.txt"
 NEXT_FOCUS_FILE="$RESULTS_DIR/next-focus.txt"
 STATUS_SNAPSHOT_FILE="$RESULTS_DIR/status.txt"
+NEXT_BRIEF_FILE="$RESULTS_DIR/next-brief.txt"
+MODULE_SUMMARY_FILE="$RESULTS_DIR/module.txt"
 
 usage() {
   cat <<'EOF'
@@ -148,6 +150,66 @@ write_current_focus() {
   current_focus > "$NEXT_FOCUS_FILE"
 }
 
+current_module_summary() {
+  if [ -x "scripts/autoresearch-module.sh" ] || [ -f "scripts/autoresearch-module.sh" ]; then
+    sh scripts/autoresearch-module.sh --summary
+    return
+  fi
+
+  cat <<'EOF'
+TED autoresearch module
+Protocol: autoresearch/protocol.md
+Workflows: autoresearch/workflows.md
+Workflow improve: one product-facing metric gain with verify + guard.
+EOF
+}
+
+module_prompt_block() {
+  if [ -x "scripts/autoresearch-module.sh" ] || [ -f "scripts/autoresearch-module.sh" ]; then
+    sh scripts/autoresearch-module.sh --prompt
+    return
+  fi
+
+  cat <<'EOF'
+TED self-optimization module:
+- Read autoresearch/protocol.md
+- Read autoresearch/workflows.md
+- Active workflow: improve
+- Contract: one focused change, mechanical verify, smoke guard, product-facing bias
+Workflow improve: one product-facing metric gain with verify + guard.
+EOF
+}
+
+write_module_summary() {
+  current_module_summary > "$MODULE_SUMMARY_FILE"
+}
+
+current_next_brief() {
+  if [ -x "scripts/autoresearch-next.sh" ] || [ -f "scripts/autoresearch-next.sh" ]; then
+    sh scripts/autoresearch-next.sh
+    return
+  fi
+
+  cat <<'EOF'
+Next iteration brief:
+Mode: safe-advance
+Focus key: autoresearch-automation
+Why this move: no next-iteration helper is available yet.
+Last outcome: none yet
+Touch first:
+- scripts/autoresearch-loop.sh
+- scripts/autoresearch-status.sh
+Verify:
+- sh scripts/autoresearch-metric.sh
+Guard:
+- make smoke
+EOF
+}
+
+write_next_brief() {
+  current_next_brief > "$NEXT_BRIEF_FILE"
+}
+
 current_status_snapshot() {
   if [ -x "scripts/autoresearch-status.sh" ] || [ -f "scripts/autoresearch-status.sh" ]; then
     sh scripts/autoresearch-status.sh --baseline "$1"
@@ -204,8 +266,15 @@ append_result() {
 build_prompt() {
   baseline="$1"
   status_block="$(cat "$STATUS_SNAPSHOT_FILE" 2>/dev/null || true)"
+  next_brief_block="$(cat "$NEXT_BRIEF_FILE" 2>/dev/null || true)"
+  module_block="$(module_prompt_block)"
   if [ -z "$status_block" ]; then
     status_block="$(current_status_snapshot "$baseline")"
+  fi
+  if printf '%s\n' "$status_block" | rg -q '^Next iteration brief:'; then
+    next_brief_block=""
+  elif [ -z "$next_brief_block" ]; then
+    next_brief_block="$(current_next_brief)"
   fi
   cat <<EOF
 You are running TED autoresearch inside $ROOT_DIR.
@@ -215,6 +284,8 @@ Read these files first:
 - docs/autoresearch-runbook.md
 - docs/extension-architecture.md
 - docs/ui-tui-design.md
+- autoresearch/protocol.md
+- autoresearch/workflows.md
 
 Goal: Increase TED autoresearch readiness and product quality.
 Scope: src/*.c, src/*.h, docs/*.md, README.md, program.md, scripts/*.sh, Makefile
@@ -231,12 +302,17 @@ Protocol:
 5. If the metric does not improve, or the guard fails, leave the worktree as-is so the loop driver can revert it safely.
 6. End with a concise summary including baseline, new metric, and whether the change should be kept.
 
+Module:
+$module_block
+
 Current priority:
 - Make TED more self-driving so a local loop script can keep improving it with minimal user input.
 - Prefer shipping productized capabilities over more planning text.
 
 Autoresearch repo state:
 $status_block
+
+$next_brief_block
 EOF
 }
 
@@ -254,7 +330,7 @@ run_once() {
 
   if [ "$RESUME_LAST" -eq 1 ]; then
     # shellcheck disable=SC2086
-    codex exec resume --last --full-auto -C "$ROOT_DIR" $model_flag -o "$LAST_OUTPUT_FILE" "$prompt"
+    codex exec -C "$ROOT_DIR" resume --last --full-auto $model_flag -o "$LAST_OUTPUT_FILE" "$prompt"
   else
     # shellcheck disable=SC2086
     codex exec --full-auto -C "$ROOT_DIR" $model_flag -o "$LAST_OUTPUT_FILE" "$prompt"
@@ -312,7 +388,9 @@ discard_iteration() {
 
 baseline_metric="$(metric_value)"
 write_current_focus
+write_next_brief
 write_status_snapshot "$baseline_metric"
+write_module_summary
 printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
 
 if [ "$PRINT_ONLY" -eq 1 ]; then
@@ -362,7 +440,9 @@ while [ "$i" -le "$ITERATIONS" ]; do
   fi
 
   write_current_focus
+  write_next_brief
   write_status_snapshot "$baseline_metric"
+  write_module_summary
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))
 done

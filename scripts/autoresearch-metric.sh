@@ -54,5 +54,12 @@ add_if_file "scripts/autoresearch-focus.sh" 5
 add_if_rg 'Current focus recommendation|Previous loop outcome|NEXT_FOCUS_FILE|autoresearch-focus\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-status.sh" 5
 add_if_rg 'Autoresearch repo state|STATUS_SNAPSHOT_FILE|autoresearch-status\.sh' "scripts/autoresearch-loop.sh" 5
+add_if_file "scripts/autoresearch-next.sh" 5
+add_if_rg 'Next iteration brief|NEXT_BRIEF_FILE|autoresearch-next\.sh' "scripts/autoresearch-loop.sh" 5
+add_if_file "scripts/autoresearch-module.sh" 5
+add_if_file "autoresearch/protocol.md" 5
+add_if_file "autoresearch/workflows.md" 5
+add_if_rg 'mquickjs-runtime|tree-sitter-intelligence|libiui-workbench|convex-sketch|llm-copilot' "scripts/autoresearch-focus.sh" 5
+add_if_rg 'autoresearch/protocol\.md|autoresearch/workflows\.md|scripts/autoresearch-module\.sh' "scripts/autoresearch-loop.sh" 5
 
 printf '%s\n' "$score"

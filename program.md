@@ -13,27 +13,104 @@
 
 ## 多目标优化
 
-本项目后续所有演进，以 `J(x)` 作为统一的多目标目标函数：
+`ted` 不是单目标项目，而是一个 5 个主方向共同推进的多目标优化系统。
 
-`J(x) = w_f * F + w_q * Q + w_u * U + w_p * P + w_e * E + w_x * X`
+主方向如下：
+
+1. `mquickjs` 脚本插件能力
+2. `tree-sitter` 增强代码理解能力
+3. `libiui` 增强 UI/工作台能力
+4. 凸优化增强几何画图能力
+5. `llm` 增强生成、解释与自进化能力
+
+后续所有演进，以 `J_total(x)` 作为统一目标函数：
+
+`J_total(x) = w_js * J_js + w_ts * J_ts + w_ui * J_ui + w_cvx * J_cvx + w_llm * J_llm + w_eng * J_eng`
 
 其中：
 
-- `F`：几何拟合误差。对圆、椭圆、直线、矩形、正方形分别建立最小二乘目标，越小越好。
-- `Q`：视觉质量。包含终端单元纵横比修正、边界连续性、图形闭合度、轮廓平滑度。
-- `U`：交互延迟。鼠标拖动到预览刷新之间的时间，目标是常态低于一帧。
-- `P`：插件可扩展性。新能力通过 JS API 注入而不是侵入核心分支逻辑。
-- `E`：工程可维护性。代码长度、耦合度、状态爆炸程度越低越好。
-- `X`：表达力。一个手势可以被映射为可编辑的几何对象、命令对象、插件对象。
+- `J_js`：脚本插件目标。衡量 `mquickjs` 能否把编辑器能力暴露为稳定 host API，支持脚本扩展 recognizer、render、command、language、tool。
+- `J_ts`：代码理解目标。衡量 `tree-sitter` 在高亮、结构感知、语义导航、对象操作、增量更新方面的真实收益。
+- `J_ui`：界面工作台目标。衡量 `libiui` 是否真的提升终端中的布局、层次、命中稳定性、runtime dock 感知和整体产品感。
+- `J_cvx`：凸优化绘图目标。衡量鼠标轨迹采样、几何拟合误差、图形稳定性、实时反馈和对象可编辑性。
+- `J_llm`：智能协作目标。衡量 `llm` 是否提升解释、生成、修复、规划、自优化 loop 和用户协作质量。
+- `J_eng`：工程稳态目标。衡量构建稳定性、回归率、复杂度、验证速度和 autoresearch 机械可执行性。
 
-默认权重：
+建议默认权重：
 
-- `w_f = 0.30`
-- `w_q = 0.20`
-- `w_u = 0.15`
-- `w_p = 0.20`
-- `w_e = 0.10`
-- `w_x = 0.05`
+- `w_js = 0.20`
+- `w_ts = 0.18`
+- `w_ui = 0.18`
+- `w_cvx = 0.22`
+- `w_llm = 0.12`
+- `w_eng = 0.10`
+
+### 各方向的优化意图
+
+#### 1. `mquickjs` 插件方向
+
+目标不是“能跑 JS”，而是“让新能力优先以脚本注入，而不是改核心 if/else”。
+
+重点优化：
+
+- `ted.registerRecognizer()` / `ted.registerCommand()` / `ted.registerLanguage()` 一类 host API
+- 图形对象、buffer、selection、runtime 状态的脚本可见性
+- 插件热加载、状态反馈、错误隔离
+- runtime dock 对插件能力的显式呈现
+
+#### 2. `tree-sitter` 代码能力方向
+
+目标不是只做高亮，而是让 TED 逐步具备“结构化编辑器”的骨架。
+
+重点优化：
+
+- 更稳定的 tree-sitter 高亮与语言接入
+- 语法树驱动的 text object、选择、跳转、折叠、局部操作
+- 语法错误、节点类型、上下文状态在 UI 中可见
+- 与 `llm`、插件系统共享 AST 级上下文
+
+#### 3. `libiui` UI 方向
+
+目标不是堆控件，而是用 `libiui` 建立终端里的产品界面语法。
+
+重点优化：
+
+- 顶部工作台三层结构
+- runtime dock / shape lab / text deck 三种工作区语义
+- 整块热区、稳定点击、清晰状态层次
+- 窄终端可退化、宽终端可扩展
+
+#### 4. 凸优化绘图方向
+
+目标不是“能画几个形状”，而是把手势输入变成一个可优化、可编辑、可扩展的几何系统。
+
+重点优化：
+
+- 单笔轨迹采样的稳定性
+- line / rect / square / ellipse / circle 的统一目标函数
+- 视觉坐标系下的低误差拟合
+- 预览、选中、编辑、导出、插件二次消费
+
+#### 5. `llm` 增强方向
+
+目标不是加一个聊天命令，而是让 LLM 成为编辑器里的“解释器 + 助手 + 自优化放大器”。
+
+重点优化：
+
+- `:llm` 与 buffer / selection / AST / sketch object 的上下文联动
+- 解释、重写、补全、生成 recognizer/plugin 的能力
+- 参与 autoresearch 的计划、总结、调参与修复
+- 与 runtime dock、status band、command flow 融合，而不是悬空存在
+
+### 方向间耦合关系
+
+这 5 个方向不是并列孤岛，而是互相增强：
+
+- `mquickjs` 给 `tree-sitter`、`sketch`、`llm` 提供扩展入口
+- `tree-sitter` 给 `llm` 和脚本插件提供结构化上下文
+- `libiui` 把插件、代码理解、图形、LLM 状态做成可感知界面
+- 凸优化图形层提供最独特的第二输入通道
+- `llm` 把这些系统串起来，提升解释、生成和自优化速度
 
 ## 几何优化原则
 
@@ -67,24 +144,24 @@
 
 ## 自进化路线
 
-### Phase 1
+### Phase 1: 核心能力成形
 
-- 完成 sketch canvas
-- 完成鼠标轨迹采集
-- 完成 line/circle/ellipse/rect/square 拟合
-- 完成命令入口 `:sketch`
+- sketch canvas、鼠标轨迹采集、基础几何拟合稳定可用
+- `mquickjs`、`tree-sitter`、`llm`、`libiui` 都至少形成一个可工作的最小入口
+- `:sketch`、`:js`、`:llm`、`:syntax tree` 等命令成为稳定操作面
 
-### Phase 2
+### Phase 2: 五方向联动
 
-- 把图形对象导出为插件可消费的数据结构
-- 支持 JS 插件注册新识别器和新渲染器
-- 支持把图形转成文本、注释框、流程节点
+- 图形对象导出为插件、LLM、UI 可共同消费的数据结构
+- `tree-sitter` 提供结构化编辑基础能力
+- runtime dock 真正展示脚本插件、recognizer、language、LLM 状态
+- LLM 能消费 buffer、selection、AST、sketch object 上下文
 
-### Phase 3
+### Phase 3: 自优化加速
 
-- 引入自动基准测试
-- 用 `autoresearch` 持续优化识别分数、延迟和代码复杂度
-- 建立 nightly mechanical loop
+- 引入覆盖 5 个方向的自动基准与状态指标
+- 用 `autoresearch` 持续在 `js / ts / ui / cvx / llm` 之间做权重驱动迭代
+- 建立 nightly mechanical loop 和仓库内自优化模块
 
 ## 插件架构目标
 

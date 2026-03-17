@@ -21,6 +21,7 @@
 - 目标约束：`program.md`
 - 回归 guard：`make smoke`
 - 机械指标：`scripts/autoresearch-metric.sh`
+- 仓库内自优化协议模块：`autoresearch/protocol.md` + `autoresearch/workflows.md`
 
 这个指标当前是一个 0-120 的 readiness score，覆盖：
 
@@ -87,7 +88,7 @@ Guard: make smoke
 
 ## 本地脚本驱动
 
-现在仓库里已经有一个本地 loop 驱动脚本：
+现在仓库里已经有一个本地 loop 驱动脚本，并且它会先读取仓库内的自优化模块：
 
 ```bash
 sh scripts/autoresearch-loop.sh -n 3 --resume-last
@@ -97,19 +98,25 @@ sh scripts/autoresearch-loop.sh -n 3 --resume-last
 
 ```bash
 make autoresearch-focus
+make autoresearch-next
 make autoresearch-status
+make autoresearch-module
 make autoresearch-loop ARGS='-n 3 --resume-last'
 make autoresearch-loop ARGS='--print-prompt'
 ```
 
+`make autoresearch-module` 会显示当前自优化模块的统一入口，避免 loop 继续依赖外部 skill 仓库。
+
 `make autoresearch-focus` 会根据仓库当前信号给出下一轮优先主题，让 loop prompt 不再完全静态。
+
+`make autoresearch-next` 会把最近几轮结果、guard 情况和当前 focus 合成为一份下一轮执行 brief，减少 loop 对人工判断“下一步做什么”的依赖。
 
 `make autoresearch-status` 会输出当前 metric、worktree 安全状态、上一轮结果和当前 focus recommendation，给本地 loop 一个可复用的状态快照。
 
 它会：
 
 1. 读取当前 baseline metric
-2. 读取当前 focus recommendation、上一轮结果摘要与 worktree 安全状态
+2. 读取当前 focus recommendation、上一轮结果摘要、next-iteration brief 与 worktree 安全状态
 3. 生成带自适应优先级的标准化 prompt
 4. 调用本机 `codex exec`
 5. 每轮结束后记录 `.autoresearch/results.tsv`

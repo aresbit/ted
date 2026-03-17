@@ -184,7 +184,7 @@ ted
 | `:recognizers` | 查看已注册的 JS 图形识别器 |
 | `:help` | 显示帮助 |
 
-本地 autoresearch loop 可先运行 `make autoresearch-focus` 查看下一轮优先主题，或运行 `make autoresearch-status` 查看当前 metric、worktree 安全状态和上一轮结果，再执行 `make autoresearch-loop ARGS='-n 3 --resume-last'`。
+本地 autoresearch 现在已经融合成仓库内的“编辑器自优化模块”。可先运行 `make autoresearch-module` 查看当前协议入口，再运行 `make autoresearch-focus` 查看下一轮优先主题，运行 `make autoresearch-next` 生成下一轮执行 brief，或运行 `make autoresearch-status` 查看当前 metric、worktree 安全状态、上一轮结果和下一轮建议，最后执行 `make autoresearch-loop ARGS='-n 3 --resume-last'`。
 
 ### 文本选择
 

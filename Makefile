@@ -67,7 +67,7 @@ else
 endif
 
 # Default target
-.PHONY: all clean debug format install uninstall smoke autoresearch-metric autoresearch-baseline autoresearch-focus autoresearch-status autoresearch-loop deps-mqjs deps-libiui
+.PHONY: all clean debug format install uninstall smoke autoresearch-metric autoresearch-baseline autoresearch-focus autoresearch-next autoresearch-status autoresearch-module autoresearch-loop deps-mqjs deps-libiui
 
 ARGS ?=
 
@@ -156,8 +156,14 @@ autoresearch-baseline:
 autoresearch-focus:
 	sh ./scripts/autoresearch-focus.sh
 
+autoresearch-next:
+	sh ./scripts/autoresearch-next.sh
+
 autoresearch-status:
 	sh ./scripts/autoresearch-status.sh
+
+autoresearch-module:
+	sh ./scripts/autoresearch-module.sh --summary
 
 autoresearch-loop:
 	sh ./scripts/autoresearch-loop.sh $(ARGS)

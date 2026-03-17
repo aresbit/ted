@@ -114,6 +114,18 @@ EOF
   fi
 }
 
+module_summary() {
+  if [ -x "scripts/autoresearch-module.sh" ] || [ -f "scripts/autoresearch-module.sh" ]; then
+    sh scripts/autoresearch-module.sh --summary
+  fi
+}
+
+next_iteration_brief() {
+  if [ -x "scripts/autoresearch-next.sh" ] || [ -f "scripts/autoresearch-next.sh" ]; then
+    sh scripts/autoresearch-next.sh
+  fi
+}
+
 metric_now="$(metric_value)"
 worktree_now="$(worktree_state)"
 best_metric="$(best_recorded_metric)"
@@ -132,5 +144,14 @@ else
   printf '%s\n' 'Loop safety: git metadata unavailable.'
 fi
 printf 'Last recorded outcome: %s\n' "$last_result"
+module_block="$(module_summary)"
+if [ -n "$module_block" ]; then
+  printf '%s\n' 'Active module:'
+  printf '%s\n' "$module_block"
+fi
 printf '%s\n' 'Current focus recommendation:'
 printf '%s\n' "$focus_block"
+next_brief="$(next_iteration_brief)"
+if [ -n "$next_brief" ]; then
+  printf '%s\n' "$next_brief"
+fi

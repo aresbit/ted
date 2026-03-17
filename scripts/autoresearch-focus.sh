@@ -4,19 +4,75 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+PRINT_KEY=0
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/autoresearch-focus.sh [--key]
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --key)
+      PRINT_KEY=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'Unknown option: %s\n' "$1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
 pick_focus() {
-  if ! rg -q 'registerSketchCommand' src/ext.c docs/extension-architecture.md 2>/dev/null; then
-    printf '%s\n' 'plugin-extensibility'
+  if ! rg -q 'mquickjs.*脚本插件能力|mquickjs' program.md 2>/dev/null; then
+    printf '%s\n' 'autoresearch-automation'
     return
   fi
 
-  if ! rg -q 'grid_glyph|selection|selected' src/sketch.c docs/ui-tui-design.md 2>/dev/null; then
-    printf '%s\n' 'sketch-workbench'
+  if ! rg -q 'registerSketchCommand|registerCommand' src/ext.c docs/extension-architecture.md 2>/dev/null; then
+    printf '%s\n' 'mquickjs-runtime'
     return
   fi
 
-  if ! rg -q 'plugin slots|runtime panel|plugins' src/iui_tui.c docs/ui-tui-design.md 2>/dev/null; then
-    printf '%s\n' 'cyber-runtime-ui'
+  if ! rg -q 'tree-sitter.*增强代码理解能力|text object|结构化编辑' program.md docs/extension-architecture.md 2>/dev/null; then
+    printf '%s\n' 'tree-sitter-intelligence'
+    return
+  fi
+
+  if ! rg -q 'text object|折叠|节点类型|syntax tree' src/command.c docs/extension-architecture.md 2>/dev/null; then
+    printf '%s\n' 'tree-sitter-intelligence'
+    return
+  fi
+
+  if ! rg -q 'libiui.*增强 UI/工作台能力|runtime dock|shape lab|text deck' program.md docs/ui-tui-design.md src/iui_tui.c 2>/dev/null; then
+    printf '%s\n' 'libiui-workbench'
+    return
+  fi
+
+  if ! rg -q '凸优化增强几何画图能力|统一目标函数|对象可编辑性' program.md src/sketch.c 2>/dev/null; then
+    printf '%s\n' 'convex-sketch'
+    return
+  fi
+
+  if ! rg -q 'selection|selected|编辑|导出|plugin' src/sketch.c docs/ui-tui-design.md 2>/dev/null; then
+    printf '%s\n' 'convex-sketch'
+    return
+  fi
+
+  if ! rg -q 'llm.*增强生成、解释与自进化能力|上下文联动|autoresearch' program.md src/llm.c docs/extension-architecture.md 2>/dev/null; then
+    printf '%s\n' 'llm-copilot'
+    return
+  fi
+
+  if ! rg -q 'sketch object|AST|selection' program.md docs/extension-architecture.md README.md 2>/dev/null; then
+    printf '%s\n' 'llm-copilot'
     return
   fi
 
@@ -26,25 +82,39 @@ pick_focus() {
 print_focus() {
   focus="$1"
   case "$focus" in
-    plugin-extensibility)
+    mquickjs-runtime)
       cat <<'EOF'
-Focus area: plugin extensibility
-Why now: sketch plugins still stop at recognizers; the extension architecture already points toward plugin-defined sketch commands.
-Suggested move: ship one host/plugin bridge that lets JS extend sketch workflows without branching core command code.
+Focus area: mquickjs runtime
+Why now: program.md makes script extensibility a first-class optimization axis, but host APIs still stop short of broader editor/runtime injection.
+Suggested move: ship one JS-facing bridge that exposes more editor or sketch behavior without branching core command code.
 EOF
       ;;
-    sketch-workbench)
+    tree-sitter-intelligence)
       cat <<'EOF'
-Focus area: sketch workbench
-Why now: the product direction calls for a geometry workspace, but the sketch surface still lacks stronger workbench affordances.
-Suggested move: ship one visible sketch capability such as selection state, pixel grid guidance, or shape preview controls.
+Focus area: tree-sitter intelligence
+Why now: program.md treats code understanding as a core direction, but TED still exposes only a thin slice of syntax-tree-driven behavior.
+Suggested move: ship one tree-sitter-driven editor action or visible AST-aware state.
 EOF
       ;;
-    cyber-runtime-ui)
+    libiui-workbench)
       cat <<'EOF'
-Focus area: cyber runtime UI
-Why now: the TUI design reserves plugin/runtime space, but the live interface still has room for a clearer runtime surface.
-Suggested move: ship one productized panel or status band that exposes plugins, recognizers, or runtime actions more directly.
+Focus area: libiui workbench
+Why now: program.md makes the workbench a core axis, but terminal UI still has room for stronger workspace semantics and clearer runtime presentation.
+Suggested move: ship one productized panel, dock behavior, or state band that makes the workbench feel more operational.
+EOF
+      ;;
+    convex-sketch)
+      cat <<'EOF'
+Focus area: convex sketch
+Why now: program.md makes geometry fitting and editability a core optimization target, but the sketch surface still lacks stronger object-level behavior.
+Suggested move: ship one visible geometry capability such as selection, edit handles, or better stroke-to-object control.
+EOF
+      ;;
+    llm-copilot)
+      cat <<'EOF'
+Focus area: llm copilot
+Why now: program.md makes LLM augmentation a top-level axis, but the current bridge is still mostly a standalone command flow.
+Suggested move: ship one concrete context bridge that gives LLM access to richer editor, AST, or sketch state.
 EOF
       ;;
     *)
@@ -57,4 +127,9 @@ EOF
   esac
 }
 
-print_focus "$(pick_focus)"
+focus_key="$(pick_focus)"
+if [ "$PRINT_KEY" -eq 1 ]; then
+  printf '%s\n' "$focus_key"
+else
+  print_focus "$focus_key"
+fi
