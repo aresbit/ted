@@ -33,13 +33,13 @@ LIBIUI_OBJS := $(patsubst $(LIBIUI_SRC_DIR)/%.c,$(BUILD_DIR)/libiui_%.o,$(LIBIUI
 
 # Compiler Configuration
 CC := clang
-CFLAGS := -std=gnu17 -Wall -Wextra -pedantic -O2 -D_GNU_SOURCE
+CFLAGS := -std=gnu17 -Wall -Wextra -pedantic -Wno-strict-prototypes -O2 -D_GNU_SOURCE
 CFLAGS += -Iinclude -I$(MQJS_DIR) -I$(TS_DIR)/lib/include -I$(TS_C_DIR)/src -I$(LIBIUI_DIR)/include -I$(LIBIUI_SRC_DIR) -fPIC -DSP_PS_DISABLE
 
 # Debug build support
 debug ?= 0
 ifeq ($(debug),1)
-    CFLAGS := -std=gnu17 -Wall -Wextra -g -O0 -D_GNU_SOURCE -DDEBUG
+    CFLAGS := -std=gnu17 -Wall -Wextra -pedantic -Wno-strict-prototypes -g -O0 -D_GNU_SOURCE -DDEBUG
     CFLAGS += -Iinclude -fPIC
 endif
 
@@ -67,7 +67,7 @@ else
 endif
 
 # Default target
-.PHONY: all clean debug format install uninstall smoke autoresearch-metric autoresearch-baseline autoresearch-loop deps-mqjs deps-libiui
+.PHONY: all clean debug format install uninstall smoke autoresearch-metric autoresearch-baseline autoresearch-focus autoresearch-status autoresearch-loop deps-mqjs deps-libiui
 
 ARGS ?=
 
@@ -152,6 +152,12 @@ autoresearch-baseline:
 	@printf 'metric\t'
 	@sh ./scripts/autoresearch-metric.sh
 	@printf 'guard\tmake smoke\n'
+
+autoresearch-focus:
+	sh ./scripts/autoresearch-focus.sh
+
+autoresearch-status:
+	sh ./scripts/autoresearch-status.sh
 
 autoresearch-loop:
 	sh ./scripts/autoresearch-loop.sh $(ARGS)

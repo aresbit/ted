@@ -184,6 +184,8 @@ ted
 | `:recognizers` | 查看已注册的 JS 图形识别器 |
 | `:help` | 显示帮助 |
 
+本地 autoresearch loop 可先运行 `make autoresearch-focus` 查看下一轮优先主题，或运行 `make autoresearch-status` 查看当前 metric、worktree 安全状态和上一轮结果，再执行 `make autoresearch-loop ARGS='-n 3 --resume-last'`。
+
 ### 文本选择
 
 - `Shift+方向键` - 选择文本

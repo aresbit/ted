@@ -22,11 +22,13 @@
 - 回归 guard：`make smoke`
 - 机械指标：`scripts/autoresearch-metric.sh`
 
-这个指标当前是一个 0-100 的 readiness score，覆盖：
+这个指标当前是一个 0-120 的 readiness score，覆盖：
 
 - 能否构建
 - 能否通过 smoke
+- 构建输出是否保持无 warning
 - 是否具备 sketch / plugin / TUI / cyber startup 等关键能力
+- autoresearch 生成物与 vendor 构建产物是否被正确忽略，避免 loop 被脏工作区卡住
 
 ## 推荐配置
 
@@ -94,17 +96,25 @@ sh scripts/autoresearch-loop.sh -n 3 --resume-last
 也可以通过 Makefile：
 
 ```bash
+make autoresearch-focus
+make autoresearch-status
 make autoresearch-loop ARGS='-n 3 --resume-last'
 make autoresearch-loop ARGS='--print-prompt'
 ```
 
+`make autoresearch-focus` 会根据仓库当前信号给出下一轮优先主题，让 loop prompt 不再完全静态。
+
+`make autoresearch-status` 会输出当前 metric、worktree 安全状态、上一轮结果和当前 focus recommendation，给本地 loop 一个可复用的状态快照。
+
 它会：
 
 1. 读取当前 baseline metric
-2. 生成标准化 prompt
-3. 调用本机 `codex exec`
-4. 每轮结束后记录 `.autoresearch/metric-history.tsv`
-5. 在干净工作区下自动执行 keep/discard，并写入 `.autoresearch/results.tsv`
+2. 读取当前 focus recommendation、上一轮结果摘要与 worktree 安全状态
+3. 生成带自适应优先级的标准化 prompt
+4. 调用本机 `codex exec`
+5. 每轮结束后记录 `.autoresearch/results.tsv`
+6. 在 `.autoresearch/status.txt` 中落盘当前状态快照，供下一轮 prompt 直接复用
+7. 在干净工作区下自动执行 keep/discard，并写入 `.autoresearch/results.tsv`
 
 重要边界：
 

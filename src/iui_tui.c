@@ -501,7 +501,7 @@ bool iui_tui_handle_key(int key) {
 
 bool iui_tui_handle_mouse(u32 term_col_1b, u32 term_row_1b, bool pressed) {
     if (!S.ready) return false;
-    u32 start_row_1b = E.screen_rows + 1;
+    u32 start_row_1b = 1;
     u32 end_row_1b = start_row_1b + S.rows - 1;
     if (term_row_1b < start_row_1b || term_row_1b > end_row_1b) return false;
     if (term_col_1b == 0 || term_col_1b > E.screen_cols) return false;

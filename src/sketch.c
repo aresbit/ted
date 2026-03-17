@@ -245,6 +245,8 @@ static bool fit_line(const sketch_point_t *pts, u32 n, sketch_shape_t *out) {
     double tmin = DBL_MAX;
     double tmax = -DBL_MAX;
     double mse = 0.0;
+    double t_first = 0.0;
+    double t_last = 0.0;
 
     for (u32 i = 0; i < n; i++) {
         double dx = pts[i].x - mx;
@@ -253,20 +255,30 @@ static bool fit_line(const sketch_point_t *pts, u32 n, sketch_shape_t *out) {
         double o = -s * dx + c * dy;
         if (t < tmin) tmin = t;
         if (t > tmax) tmax = t;
+        if (i == 0) t_first = t;
+        if (i + 1 == n) t_last = t;
         mse += o * o;
     }
     mse /= (double)n;
+
+    double span = fabs(tmax - tmin);
+    double start_t = t_first;
+    double end_t = t_last;
+    if (fabs(end_t - start_t) < fmax(1.0, span * 0.35)) {
+        start_t = tmin;
+        end_t = tmax;
+    }
 
     out->kind = SKETCH_SHAPE_LINE;
     out->score = mse;
     out->cx = mx;
     out->cy = my;
     out->angle = angle;
-    out->x1 = mx + c * tmin;
-    out->y1 = my + s * tmin;
-    out->x2 = mx + c * tmax;
-    out->y2 = my + s * tmax;
-    out->rx = fabs(tmax - tmin) * 0.5;
+    out->x1 = mx + c * start_t;
+    out->y1 = my + s * start_t;
+    out->x2 = mx + c * end_t;
+    out->y2 = my + s * end_t;
+    out->rx = fabs(end_t - start_t) * 0.5;
     out->ry = 0.0;
     return true;
 }
@@ -703,10 +715,12 @@ void sketch_clear(void) {
 bool sketch_handle_mouse(u32 term_col_1b, u32 term_row_1b, bool pressed) {
     if (!G.enabled) return false;
     if (term_col_1b == 0 || term_col_1b > E.screen_cols) return false;
-    if (term_row_1b == 0 || term_row_1b > E.screen_rows) return false;
+    u32 content_start_row_1b = iui_tui_panel_rows() + 1;
+    u32 content_end_row_1b = content_start_row_1b + E.screen_rows - 1;
+    if (term_row_1b < content_start_row_1b || term_row_1b > content_end_row_1b) return false;
 
     double x = (double)(term_col_1b - 1);
-    double y = (double)(term_row_1b - 1) * SKETCH_ASPECT_Y;
+    double y = (double)(term_row_1b - content_start_row_1b) * SKETCH_ASPECT_Y;
 
     if (pressed) {
         if (!G.stroke_active) {
@@ -810,7 +824,7 @@ static c8 grid_glyph(u32 col, u32 row) {
 void sketch_draw_canvas(sp_io_writer_t *out) {
     if (!out) return;
     for (u32 row = 0; row < E.screen_rows; row++) {
-        display_set_cursor(row, 0);
+        display_set_cursor(iui_tui_panel_rows() + row, 0);
         sp_io_write_cstr(out, "\033[K");
         for (u32 col = 0; col < E.screen_cols; col++) {
             double px = (double)col;

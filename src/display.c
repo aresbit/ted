@@ -20,6 +20,14 @@ static const cui_theme_t *CUI;
 static bool G_stdin_is_tty = false;
 static bool G_raw_mode_enabled = false;
 
+static u32 display_panel_rows(void) {
+    return iui_tui_panel_rows();
+}
+
+static u32 display_content_row0(void) {
+    return display_panel_rows();
+}
+
 static const c8* display_context_hint(void) {
     if (sketch_is_enabled()) {
         return "Sketch mode. Drag mouse to draw. :sketch auto|line|rect|square|ellipse|circle";
@@ -45,7 +53,7 @@ static bool display_show_empty_state(void) {
 static void display_draw_centered(u32 row, const c8 *text, const c8 *style) {
     u32 len = (u32)strlen(text);
     u32 col = len < E.screen_cols ? (E.screen_cols - len) / 2 : 0;
-    display_set_cursor(row, col);
+    display_set_cursor(display_content_row0() + row, col);
     if (style) {
         sp_io_write_cstr(&stdout_writer, style);
     }
@@ -102,6 +110,7 @@ static void cleanup_terminal(void) {
     sp_io_write_cstr(&out, ESC "H");
     if (G_stdin_is_tty) {
         sp_io_write_cstr(&out, ESC "?1000l");
+        sp_io_write_cstr(&out, ESC "?1002l");
         sp_io_write_cstr(&out, ESC "?1006l");
     }
     sp_io_write_cstr(&out, ESC "?25h"); // Show cursor
@@ -181,17 +190,18 @@ void display_init(void) {
         }
         G_raw_mode_enabled = true;
 
-        // Enable mouse reporting (button press/release + SGR coords)
+        // Enable drag-aware mouse reporting (press/release + button motion + SGR coords)
         sp_io_write_cstr(&stdout_writer, ESC "?1000h");
+        sp_io_write_cstr(&stdout_writer, ESC "?1002h");
         sp_io_write_cstr(&stdout_writer, ESC "?1006h");
     }
 
     // Get screen size
-    u32 reserved_rows = iui_tui_panel_rows() + 1; // toolbar + message bar
+    u32 reserved_rows = display_panel_rows() + 1; // toolbar + message bar
     u32 total_rows = display_get_screen_rows();
     E.screen_rows = total_rows > reserved_rows ? total_rows - reserved_rows : 1;
     E.screen_cols = display_get_screen_cols();
-    iui_tui_init(E.screen_cols, iui_tui_panel_rows());
+    iui_tui_init(E.screen_cols, display_panel_rows());
 
     // Clear screen initially
     display_clear();
@@ -224,7 +234,7 @@ void display_draw_rows(void) {
         u32 file_row = y + E.row_offset;
 
         // Move cursor to start of row
-        display_set_cursor(y, 0);
+        display_set_cursor(display_content_row0() + y, 0);
 
         // Clear line
         sp_io_write_cstr(&stdout_writer, ESC "K");
@@ -319,14 +329,14 @@ void display_draw_rows(void) {
 }
 
 void display_draw_status_bar(void) {
-    iui_tui_resize(E.screen_cols, iui_tui_panel_rows());
+    iui_tui_resize(E.screen_cols, display_panel_rows());
     iui_tui_draw_toolbar();
-    iui_tui_blit(&stdout_writer, E.screen_rows);
+    iui_tui_blit(&stdout_writer, 0);
 }
 
 void display_draw_message_bar(void) {
     // Move to message bar position
-    display_set_cursor(E.screen_rows + iui_tui_panel_rows(), 0);
+    display_set_cursor(display_content_row0() + E.screen_rows, 0);
 
     // Clear line
     sp_io_write_cstr(&stdout_writer, ESC "K");
@@ -398,14 +408,14 @@ void display_draw_message_bar(void) {
 
 void display_refresh(void) {
     // Update screen size (in case of resize)
-    u32 reserved_rows = iui_tui_panel_rows() + 1;
+    u32 reserved_rows = display_panel_rows() + 1;
     u32 total_rows = display_get_screen_rows();
     u32 new_rows = total_rows > reserved_rows ? total_rows - reserved_rows : 1;
     u32 new_cols = display_get_screen_cols();
     if (new_rows != E.screen_rows || new_cols != E.screen_cols) {
         E.screen_rows = new_rows;
         E.screen_cols = new_cols;
-        iui_tui_resize(E.screen_cols, iui_tui_panel_rows());
+        iui_tui_resize(E.screen_cols, display_panel_rows());
     }
 
     // Hide cursor during update
@@ -427,7 +437,7 @@ void display_refresh(void) {
 
     // Adjust for command/search mode input
     if (E.mode == MODE_COMMAND || E.mode == MODE_SEARCH || E.mode == MODE_REPLACE) {
-        cursor_row = E.screen_rows + iui_tui_panel_rows();
+        cursor_row = display_content_row0() + E.screen_rows;
         cursor_col = E.command_buffer.len;
         if (E.mode == MODE_COMMAND) cursor_col += 1; // For ':' prefix
         if (E.mode == MODE_SEARCH) cursor_col += 1; // For '/' prefix
@@ -437,11 +447,12 @@ void display_refresh(void) {
     // Ensure cursor is within bounds (for normal/edit mode, not command/search)
     if (E.mode != MODE_COMMAND && E.mode != MODE_SEARCH && E.mode != MODE_REPLACE) {
         if (sketch_is_enabled()) {
-            cursor_row = E.screen_rows + iui_tui_panel_rows();
+            cursor_row = display_content_row0() + E.screen_rows;
             cursor_col = 0;
         } else {
             if (cursor_row >= E.screen_rows) cursor_row = E.screen_rows - 1;
             if (cursor_col >= E.screen_cols) cursor_col = E.screen_cols - 1;
+            cursor_row += display_content_row0();
         }
     }
 

@@ -14,6 +14,8 @@ RESULTS_DIR=".autoresearch"
 RESULTS_FILE="$RESULTS_DIR/results.tsv"
 LAST_OUTPUT_FILE="$RESULTS_DIR/last-output.txt"
 LAST_PROMPT_FILE="$RESULTS_DIR/last-prompt.txt"
+NEXT_FOCUS_FILE="$RESULTS_DIR/next-focus.txt"
+STATUS_SNAPSHOT_FILE="$RESULTS_DIR/status.txt"
 
 usage() {
   cat <<'EOF'
@@ -129,6 +131,63 @@ ensure_results_header() {
   fi
 }
 
+current_focus() {
+  if [ -x "scripts/autoresearch-focus.sh" ] || [ -f "scripts/autoresearch-focus.sh" ]; then
+    sh scripts/autoresearch-focus.sh
+    return
+  fi
+
+  cat <<'EOF'
+Focus area: autoresearch automation
+Why now: no adaptive focus helper is available yet.
+Suggested move: ship a self-driving loop improvement rather than more planning text.
+EOF
+}
+
+write_current_focus() {
+  current_focus > "$NEXT_FOCUS_FILE"
+}
+
+current_status_snapshot() {
+  if [ -x "scripts/autoresearch-status.sh" ] || [ -f "scripts/autoresearch-status.sh" ]; then
+    sh scripts/autoresearch-status.sh --baseline "$1"
+    return
+  fi
+
+  cat <<EOF
+Autoresearch status snapshot:
+Current metric: $1
+Last recorded outcome: $(last_result_summary)
+Current focus recommendation:
+$(current_focus)
+EOF
+}
+
+write_status_snapshot() {
+  current_status_snapshot "$1" > "$STATUS_SNAPSHOT_FILE"
+}
+
+last_result_summary() {
+  if [ ! -f "$RESULTS_FILE" ]; then
+    printf '%s\n' 'Previous loop outcome: none yet.'
+    return
+  fi
+
+  last_line="$(tail -n 1 "$RESULTS_FILE")"
+  if [ "$last_line" = "$(printf 'time\titeration\tbaseline\tmetric\tstatus\tguard\tcommit\tnote')" ]; then
+    printf '%s\n' 'Previous loop outcome: none yet.'
+    return
+  fi
+
+  summary="$(printf '%s\n' "$last_line" | awk -F '\t' '{
+    note=$8;
+    if (note == "") note="n/a";
+    printf "Previous loop outcome: iteration %s ended with status=%s, guard=%s, metric=%s, note=%s.",
+      $2, $5, $6, $4, note;
+  }')"
+  printf '%s\n' "$summary"
+}
+
 append_result() {
   ts="$1"
   iter="$2"
@@ -144,6 +203,10 @@ append_result() {
 
 build_prompt() {
   baseline="$1"
+  status_block="$(cat "$STATUS_SNAPSHOT_FILE" 2>/dev/null || true)"
+  if [ -z "$status_block" ]; then
+    status_block="$(current_status_snapshot "$baseline")"
+  fi
   cat <<EOF
 You are running TED autoresearch inside $ROOT_DIR.
 
@@ -171,6 +234,9 @@ Protocol:
 Current priority:
 - Make TED more self-driving so a local loop script can keep improving it with minimal user input.
 - Prefer shipping productized capabilities over more planning text.
+
+Autoresearch repo state:
+$status_block
 EOF
 }
 
@@ -245,6 +311,8 @@ discard_iteration() {
 }
 
 baseline_metric="$(metric_value)"
+write_current_focus
+write_status_snapshot "$baseline_metric"
 printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
 
 if [ "$PRINT_ONLY" -eq 1 ]; then
@@ -293,6 +361,8 @@ while [ "$i" -le "$ITERATIONS" ]; do
     printf 'discarded iteration: metric %s -> %s, guard=%s\n' "$baseline_metric" "$metric_after" "$guard_status"
   fi
 
+  write_current_focus
+  write_status_snapshot "$baseline_metric"
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))
 done
