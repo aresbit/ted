@@ -172,7 +172,7 @@ ted
 | `:set nu` | 显示行号 |
 | `:set nonu` | 隐藏行号 |
 | `:syntax on/off` | 开启/关闭语法高亮 |
-| `:syntax tree on/off/status/inspect` | 控制 tree-sitter，并查看光标下 AST 节点 |
+| `:syntax tree on/off/status/inspect/select/parent/prev/next` | 控制 tree-sitter，查看、选中或跳转到光标附近 AST 节点 |
 | `:llm prompt` | 发送提示词（含上下文） |
 | `:llmshow` | 预览最近一次 LLM 结果 |
 | `:llmcopy` | 把最近一次 LLM 结果复制到剪贴板 |

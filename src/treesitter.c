@@ -320,3 +320,143 @@ sp_str_t treesitter_describe_cursor(buffer_t *buf, u32 row, u32 col) {
     ts_tree_delete(tree);
     return out;
 }
+
+bool treesitter_node_range_at_cursor(buffer_t *buf, u32 row, u32 col,
+                                     u32 *start_row, u32 *start_col,
+                                     u32 *end_row, u32 *end_col,
+                                     sp_str_t *summary) {
+    if (!buf || !treesitter_is_enabled()) {
+        if (summary) *summary = sp_str_lit("tree-sitter disabled");
+        return false;
+    }
+    if (!ts_select_language_for_buffer(buf)) {
+        if (summary) *summary = sp_format("no grammar ({})", SP_FMT_STR(G_ts.last_status));
+        return false;
+    }
+    if (!ts_parser_set_language(G_ts.parser, G_ts.active_lang)) {
+        if (summary) *summary = sp_format("grammar error ({})", SP_FMT_CSTR(G_ts.active_grammar));
+        return false;
+    }
+
+    sp_str_t text = ts_buffer_text(buf);
+    TSTree *tree = ts_parser_parse_string(G_ts.parser, SP_NULLPTR, text.data, text.len);
+    if (!tree) {
+        if (summary) *summary = sp_format("parse failed ({})", SP_FMT_CSTR(G_ts.active_grammar));
+        return false;
+    }
+
+    TSPoint point = { .row = row, .column = col };
+    TSNode root = ts_tree_root_node(tree);
+    TSNode node = ts_node_descendant_for_point_range(root, point, point);
+    if (ts_node_is_null(node)) {
+        ts_tree_delete(tree);
+        if (summary) *summary = sp_str_lit("no node at cursor");
+        return false;
+    }
+
+    TSPoint start = ts_node_start_point(node);
+    TSPoint end = ts_node_end_point(node);
+    if (start_row) *start_row = start.row;
+    if (start_col) *start_col = start.column;
+    if (end_row) *end_row = end.row;
+    if (end_col) *end_col = end.column;
+    if (summary) {
+        const c8 *type = ts_node_type(node);
+        *summary = sp_format("{} [{}:{}-{}:{}]",
+                             SP_FMT_CSTR(type ? type : "unknown"),
+                             SP_FMT_U32(start.row + 1),
+                             SP_FMT_U32(start.column + 1),
+                             SP_FMT_U32(end.row + 1),
+                             SP_FMT_U32(end.column + 1));
+    }
+
+    ts_tree_delete(tree);
+    return true;
+}
+
+bool treesitter_nav_at_cursor(buffer_t *buf, u32 row, u32 col,
+                              treesitter_nav_kind_t kind,
+                              u32 *target_row, u32 *target_col,
+                              sp_str_t *summary) {
+    if (!buf || !treesitter_is_enabled()) {
+        if (summary) *summary = sp_str_lit("tree-sitter disabled");
+        return false;
+    }
+    if (!ts_select_language_for_buffer(buf)) {
+        if (summary) *summary = sp_format("no grammar ({})", SP_FMT_STR(G_ts.last_status));
+        return false;
+    }
+    if (!ts_parser_set_language(G_ts.parser, G_ts.active_lang)) {
+        if (summary) *summary = sp_format("grammar error ({})", SP_FMT_CSTR(G_ts.active_grammar));
+        return false;
+    }
+
+    sp_str_t text = ts_buffer_text(buf);
+    TSTree *tree = ts_parser_parse_string(G_ts.parser, SP_NULLPTR, text.data, text.len);
+    if (!tree) {
+        if (summary) *summary = sp_format("parse failed ({})", SP_FMT_CSTR(G_ts.active_grammar));
+        return false;
+    }
+
+    TSPoint point = { .row = row, .column = col };
+    TSNode root = ts_tree_root_node(tree);
+    TSNode node = ts_node_named_descendant_for_point_range(root, point, point);
+    if (ts_node_is_null(node)) {
+        node = ts_node_descendant_for_point_range(root, point, point);
+    }
+    if (ts_node_is_null(node)) {
+        ts_tree_delete(tree);
+        if (summary) *summary = sp_str_lit("no node at cursor");
+        return false;
+    }
+
+    TSNode target = node;
+    const c8 *action = "node";
+    switch (kind) {
+        case TREE_NAV_PARENT:
+            target = ts_node_parent(node);
+            action = "parent";
+            break;
+        case TREE_NAV_PREV_SIBLING:
+            target = ts_node_prev_named_sibling(node);
+            action = "prev";
+            if (ts_node_is_null(target)) {
+                target = ts_node_prev_sibling(node);
+            }
+            break;
+        case TREE_NAV_NEXT_SIBLING:
+            target = ts_node_next_named_sibling(node);
+            action = "next";
+            if (ts_node_is_null(target)) {
+                target = ts_node_next_sibling(node);
+            }
+            break;
+    }
+
+    if (ts_node_is_null(target)) {
+        ts_tree_delete(tree);
+        if (summary) {
+            *summary = sp_format("no {} from {}", SP_FMT_CSTR(action),
+                                 SP_FMT_CSTR(ts_node_type(node) ? ts_node_type(node) : "node"));
+        }
+        return false;
+    }
+
+    TSPoint start = ts_node_start_point(target);
+    TSPoint end = ts_node_end_point(target);
+    if (target_row) *target_row = start.row;
+    if (target_col) *target_col = start.column;
+    if (summary) {
+        const c8 *type = ts_node_type(target);
+        *summary = sp_format("{} {} [{}:{}-{}:{}]",
+                             SP_FMT_CSTR(action),
+                             SP_FMT_CSTR(type ? type : "unknown"),
+                             SP_FMT_U32(start.row + 1),
+                             SP_FMT_U32(start.column + 1),
+                             SP_FMT_U32(end.row + 1),
+                             SP_FMT_U32(end.column + 1));
+    }
+
+    ts_tree_delete(tree);
+    return true;
+}

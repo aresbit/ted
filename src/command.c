@@ -60,6 +60,23 @@ static u32 parse_u32(sp_str_t s) {
     return value;
 }
 
+static void command_reveal_cursor(void) {
+    if (E.cursor.row < E.row_offset) {
+        E.row_offset = E.cursor.row;
+    } else if (E.cursor.row >= E.row_offset + E.screen_rows) {
+        E.row_offset = E.cursor.row - E.screen_rows + 1;
+    }
+
+    u32 gutter = E.config.show_line_numbers ? 5 : 0;
+    u32 visible_cols = E.screen_cols > gutter ? E.screen_cols - gutter : E.screen_cols;
+    if (E.cursor.render_col < E.col_offset) {
+        E.col_offset = E.cursor.render_col;
+    } else if (visible_cols > 1 && E.cursor.render_col >= E.col_offset + visible_cols - 1) {
+        E.col_offset = E.cursor.render_col - visible_cols + 2;
+        if (E.col_offset > E.cursor.render_col) E.col_offset = 0;
+    }
+}
+
 bool command_register_js(sp_str_t name, sp_str_t code) {
     if (name.len == 0 || code.len == 0) return false;
 
@@ -185,8 +202,63 @@ static bool cmd_syntax(sp_str_t arg) {
     } else if (sp_str_equal(arg, sp_str_lit("tree inspect"))) {
         sp_str_t s = treesitter_describe_cursor(&E.buffer, E.cursor.row, E.cursor.col);
         editor_set_message("tree-sitter: %.*s", (int)s.len, s.data);
+    } else if (sp_str_equal(arg, sp_str_lit("tree select"))) {
+        u32 start_row = 0, start_col = 0, end_row = 0, end_col = 0;
+        sp_str_t summary = sp_str_lit("");
+        if (!treesitter_node_range_at_cursor(&E.buffer, E.cursor.row, E.cursor.col,
+                                             &start_row, &start_col, &end_row, &end_col,
+                                             &summary)) {
+            editor_set_message("tree-sitter: %.*s", (int)summary.len, summary.data);
+            return true;
+        }
+
+        if (start_row >= E.buffer.line_count) {
+            editor_set_message("tree-sitter: invalid node range");
+            return true;
+        }
+        if (end_row >= E.buffer.line_count) {
+            end_row = E.buffer.line_count - 1;
+            end_col = E.buffer.lines[end_row].text.len;
+        }
+
+        E.select_start.row = start_row;
+        E.select_start.col = start_col;
+        E.select_start.render_col = buffer_row_to_render(&E.buffer, start_row, start_col);
+        E.cursor.row = end_row;
+        E.cursor.col = end_col;
+        E.cursor.render_col = buffer_row_to_render(&E.buffer, end_row, end_col);
+        E.has_selection = true;
+        command_reveal_cursor();
+        editor_set_message("tree-sitter selected: %.*s", (int)summary.len, summary.data);
+    } else if (sp_str_equal(arg, sp_str_lit("tree parent")) ||
+               sp_str_equal(arg, sp_str_lit("tree prev")) ||
+               sp_str_equal(arg, sp_str_lit("tree next"))) {
+        treesitter_nav_kind_t nav = TREE_NAV_PARENT;
+        const c8 *label = "parent";
+        if (sp_str_equal(arg, sp_str_lit("tree prev"))) {
+            nav = TREE_NAV_PREV_SIBLING;
+            label = "prev";
+        } else if (sp_str_equal(arg, sp_str_lit("tree next"))) {
+            nav = TREE_NAV_NEXT_SIBLING;
+            label = "next";
+        }
+
+        u32 target_row = 0, target_col = 0;
+        sp_str_t summary = sp_str_lit("");
+        if (!treesitter_nav_at_cursor(&E.buffer, E.cursor.row, E.cursor.col, nav,
+                                      &target_row, &target_col, &summary)) {
+            editor_set_message("tree-sitter: %.*s", (int)summary.len, summary.data);
+            return true;
+        }
+
+        E.cursor.row = target_row;
+        E.cursor.col = target_col;
+        E.cursor.render_col = buffer_row_to_render(&E.buffer, target_row, target_col);
+        E.has_selection = false;
+        command_reveal_cursor();
+        editor_set_message("tree-sitter %s: %.*s", label, (int)summary.len, summary.data);
     } else {
-        editor_set_message("Usage: :syntax on|off|tree on|tree off|tree status|tree inspect");
+        editor_set_message("Usage: :syntax on|off|tree on|tree off|tree status|tree inspect|tree select|tree parent|tree prev|tree next");
     }
     return true;
 }

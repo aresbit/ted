@@ -185,6 +185,12 @@ typedef enum {
     SYNTAX_CONFLICT_ERROR,
 } syntax_conflict_policy_t;
 
+typedef enum {
+    TREE_NAV_PARENT = 0,
+    TREE_NAV_PREV_SIBLING,
+    TREE_NAV_NEXT_SIBLING,
+} treesitter_nav_kind_t;
+
 // Global editor instance
 extern editor_t E;
 
@@ -296,6 +302,14 @@ bool treesitter_is_available(void);
 sp_str_t treesitter_status(void);
 bool treesitter_highlight_buffer(buffer_t *buf);
 sp_str_t treesitter_describe_cursor(buffer_t *buf, u32 row, u32 col);
+bool treesitter_node_range_at_cursor(buffer_t *buf, u32 row, u32 col,
+                                     u32 *start_row, u32 *start_col,
+                                     u32 *end_row, u32 *end_col,
+                                     sp_str_t *summary);
+bool treesitter_nav_at_cursor(buffer_t *buf, u32 row, u32 col,
+                              treesitter_nav_kind_t kind,
+                              u32 *target_row, u32 *target_col,
+                              sp_str_t *summary);
 
 // search.c
 void search_init(void);
