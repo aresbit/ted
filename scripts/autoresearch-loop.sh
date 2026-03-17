@@ -598,6 +598,8 @@ ensure_results_header
 i=1
 while [ "$i" -le "$ITERATIONS" ]; do
   ts="$(timestamp)"
+  decision_baseline="$baseline_metric"
+  decision_metric="$baseline_metric"
   printf '== autoresearch iteration %s/%s ==\n' "$i" "$ITERATIONS"
   printf 'baseline metric: %s\n' "$baseline_metric"
 
@@ -621,15 +623,18 @@ while [ "$i" -le "$ITERATIONS" ]; do
   if [ "$ALLOW_DIRTY" -eq 1 ]; then
     status="observe"
     append_result "$ts" "$i" "$baseline_metric" "$metric_after" "$status" "$guard_status" "$(current_head)" "$note"
+    decision_metric="$metric_after"
     printf 'dirty mode: recorded observation only (no keep/discard)\n'
   elif [ "$guard_status" = "pass" ] && [ "$metric_after" -gt "$baseline_metric" ]; then
     previous_baseline="$baseline_metric"
     keep_iteration "$i" "$baseline_metric" "$metric_after" "$ts" "$note"
     baseline_metric="$metric_after"
+    decision_metric="$metric_after"
     printf 'kept iteration: metric %s -> %s\n' "$previous_baseline" "$metric_after"
   else
     discard_iteration "$i" "$baseline_metric" "$metric_after" "$ts" "$guard_status" "$note" \
       "$before_untracked" "$after_untracked"
+    decision_metric="$metric_after"
     printf 'discarded iteration: metric %s -> %s, guard=%s\n' "$baseline_metric" "$metric_after" "$guard_status"
   fi
 
@@ -643,7 +648,7 @@ while [ "$i" -le "$ITERATIONS" ]; do
   write_capabilities_summary
   write_priority_summary
   write_memory_summary
-  write_decision_summary "$baseline_metric" "$new_metric" "$guard_status"
+  write_decision_summary "$decision_baseline" "$decision_metric" "$guard_status"
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))
 done

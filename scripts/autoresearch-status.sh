@@ -6,6 +6,16 @@ cd "$ROOT_DIR"
 
 RESULTS_DIR=".autoresearch"
 RESULTS_FILE="$RESULTS_DIR/results.tsv"
+NEXT_FOCUS_FILE="$RESULTS_DIR/next-focus.txt"
+NEXT_BRIEF_FILE="$RESULTS_DIR/next-brief.txt"
+MODULE_SUMMARY_FILE="$RESULTS_DIR/module.txt"
+HISTORY_SNAPSHOT_FILE="$RESULTS_DIR/history.txt"
+DOCTOR_SNAPSHOT_FILE="$RESULTS_DIR/doctor.txt"
+RUBRIC_SNAPSHOT_FILE="$RESULTS_DIR/rubric.txt"
+DECISION_SNAPSHOT_FILE="$RESULTS_DIR/decision.txt"
+CAPABILITIES_SNAPSHOT_FILE="$RESULTS_DIR/capabilities.txt"
+PRIORITY_SNAPSHOT_FILE="$RESULTS_DIR/priority.txt"
+MEMORY_SNAPSHOT_FILE="$RESULTS_DIR/memory.txt"
 BASELINE_OVERRIDE=""
 
 usage() {
@@ -103,7 +113,9 @@ last_result_summary() {
 }
 
 current_focus() {
-  if [ -x "scripts/autoresearch-focus.sh" ] || [ -f "scripts/autoresearch-focus.sh" ]; then
+  if [ -s "$NEXT_FOCUS_FILE" ]; then
+    cat "$NEXT_FOCUS_FILE"
+  elif [ -x "scripts/autoresearch-focus.sh" ] || [ -f "scripts/autoresearch-focus.sh" ]; then
     sh scripts/autoresearch-focus.sh
   else
     cat <<'EOF'
@@ -115,49 +127,65 @@ EOF
 }
 
 module_summary() {
-  if [ -x "scripts/autoresearch-module.sh" ] || [ -f "scripts/autoresearch-module.sh" ]; then
+  if [ -s "$MODULE_SUMMARY_FILE" ]; then
+    cat "$MODULE_SUMMARY_FILE"
+  elif [ -x "scripts/autoresearch-module.sh" ] || [ -f "scripts/autoresearch-module.sh" ]; then
     sh scripts/autoresearch-module.sh --summary
   fi
 }
 
 next_iteration_brief() {
-  if [ -x "scripts/autoresearch-next.sh" ] || [ -f "scripts/autoresearch-next.sh" ]; then
+  if [ -s "$NEXT_BRIEF_FILE" ]; then
+    cat "$NEXT_BRIEF_FILE"
+  elif [ -x "scripts/autoresearch-next.sh" ] || [ -f "scripts/autoresearch-next.sh" ]; then
     sh scripts/autoresearch-next.sh
   fi
 }
 
 history_block() {
-  if [ -x "scripts/autoresearch-history.sh" ] || [ -f "scripts/autoresearch-history.sh" ]; then
+  if [ -s "$HISTORY_SNAPSHOT_FILE" ]; then
+    cat "$HISTORY_SNAPSHOT_FILE"
+  elif [ -x "scripts/autoresearch-history.sh" ] || [ -f "scripts/autoresearch-history.sh" ]; then
     sh scripts/autoresearch-history.sh
   fi
 }
 
 doctor_block() {
-  if [ -x "scripts/autoresearch-doctor.sh" ] || [ -f "scripts/autoresearch-doctor.sh" ]; then
+  if [ -s "$DOCTOR_SNAPSHOT_FILE" ]; then
+    cat "$DOCTOR_SNAPSHOT_FILE"
+  elif [ -x "scripts/autoresearch-doctor.sh" ] || [ -f "scripts/autoresearch-doctor.sh" ]; then
     sh scripts/autoresearch-doctor.sh
   fi
 }
 
 rubric_block() {
-  if [ -x "scripts/autoresearch-rubric.sh" ] || [ -f "scripts/autoresearch-rubric.sh" ]; then
+  if [ -s "$RUBRIC_SNAPSHOT_FILE" ]; then
+    cat "$RUBRIC_SNAPSHOT_FILE"
+  elif [ -x "scripts/autoresearch-rubric.sh" ] || [ -f "scripts/autoresearch-rubric.sh" ]; then
     sh scripts/autoresearch-rubric.sh
   fi
 }
 
 capabilities_block() {
-  if [ -x "scripts/autoresearch-capabilities.sh" ] || [ -f "scripts/autoresearch-capabilities.sh" ]; then
+  if [ -s "$CAPABILITIES_SNAPSHOT_FILE" ]; then
+    cat "$CAPABILITIES_SNAPSHOT_FILE"
+  elif [ -x "scripts/autoresearch-capabilities.sh" ] || [ -f "scripts/autoresearch-capabilities.sh" ]; then
     sh scripts/autoresearch-capabilities.sh
   fi
 }
 
 priority_block() {
-  if [ -x "scripts/autoresearch-priority.sh" ] || [ -f "scripts/autoresearch-priority.sh" ]; then
+  if [ -s "$PRIORITY_SNAPSHOT_FILE" ]; then
+    cat "$PRIORITY_SNAPSHOT_FILE"
+  elif [ -x "scripts/autoresearch-priority.sh" ] || [ -f "scripts/autoresearch-priority.sh" ]; then
     sh scripts/autoresearch-priority.sh
   fi
 }
 
 memory_block() {
-  if [ -x "scripts/autoresearch-memory.sh" ] || [ -f "scripts/autoresearch-memory.sh" ]; then
+  if [ -s "$MEMORY_SNAPSHOT_FILE" ]; then
+    cat "$MEMORY_SNAPSHOT_FILE"
+  elif [ -x "scripts/autoresearch-memory.sh" ] || [ -f "scripts/autoresearch-memory.sh" ]; then
     sh scripts/autoresearch-memory.sh
   fi
 }
@@ -186,7 +214,9 @@ last_decision_args() {
 }
 
 decision_block() {
-  if [ -x "scripts/autoresearch-decision.sh" ] || [ -f "scripts/autoresearch-decision.sh" ]; then
+  if [ -s "$DECISION_SNAPSHOT_FILE" ]; then
+    cat "$DECISION_SNAPSHOT_FILE"
+  elif [ -x "scripts/autoresearch-decision.sh" ] || [ -f "scripts/autoresearch-decision.sh" ]; then
     decision_args="$(last_decision_args)"
     decision_baseline="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $1 }')"
     decision_metric="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $2 }')"
@@ -204,6 +234,20 @@ best_metric="$(best_recorded_metric)"
 last_result="$(last_result_summary)"
 focus_block="$(current_focus)"
 
+print_titled_block() {
+  title="$1"
+  block="$2"
+  if [ -z "$block" ]; then
+    return
+  fi
+  if printf '%s\n' "$block" | rg -q "^$title\$"; then
+    printf '%s\n' "$block"
+  else
+    printf '%s\n' "$title"
+    printf '%s\n' "$block"
+  fi
+}
+
 printf '%s\n' 'Autoresearch status snapshot:'
 printf 'Current metric: %s\n' "$metric_now"
 printf 'Best recorded metric: %s\n' "$best_metric"
@@ -213,21 +257,15 @@ if [ "$worktree_now" = "clean" ]; then
 elif [ "$worktree_now" = "dirty" ]; then
   printf '%s\n' 'Loop safety: auto keep/discard is blocked unless you accept observe-only mode with --allow-dirty.'
 else
-  printf '%s\n' 'Loop safety: git metadata unavailable.'
+printf '%s\n' 'Loop safety: git metadata unavailable.'
 fi
 printf 'Last recorded outcome: %s\n' "$last_result"
 history="$(history_block)"
-if [ -n "$history" ]; then
-  printf '%s\n' "$history"
-fi
+print_titled_block 'Autoresearch history:' "$history"
 doctor="$(doctor_block)"
-if [ -n "$doctor" ]; then
-  printf '%s\n' "$doctor"
-fi
+print_titled_block 'Autoresearch doctor:' "$doctor"
 rubric="$(rubric_block)"
-if [ -n "$rubric" ]; then
-  printf '%s\n' "$rubric"
-fi
+print_titled_block 'Autoresearch rubric:' "$rubric"
 capabilities="$(capabilities_block)"
 if [ -n "$capabilities" ]; then
   printf '%s\n' "$capabilities"
@@ -241,9 +279,7 @@ if [ -n "$memory" ]; then
   printf '%s\n' "$memory"
 fi
 decision="$(decision_block)"
-if [ -n "$decision" ]; then
-  printf '%s\n' "$decision"
-fi
+print_titled_block 'Autoresearch decision:' "$decision"
 module_block="$(module_summary)"
 if [ -n "$module_block" ]; then
   printf '%s\n' 'Active module:'
