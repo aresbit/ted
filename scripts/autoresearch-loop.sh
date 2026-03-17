@@ -19,6 +19,7 @@ STATUS_SNAPSHOT_FILE="$RESULTS_DIR/status.txt"
 NEXT_BRIEF_FILE="$RESULTS_DIR/next-brief.txt"
 MODULE_SUMMARY_FILE="$RESULTS_DIR/module.txt"
 HISTORY_SNAPSHOT_FILE="$RESULTS_DIR/history.txt"
+DOCTOR_SNAPSHOT_FILE="$RESULTS_DIR/doctor.txt"
 
 usage() {
   cat <<'EOF'
@@ -201,6 +202,22 @@ write_history_summary() {
   current_history_summary > "$HISTORY_SNAPSHOT_FILE"
 }
 
+current_doctor_summary() {
+  if [ -x "scripts/autoresearch-doctor.sh" ] || [ -f "scripts/autoresearch-doctor.sh" ]; then
+    sh scripts/autoresearch-doctor.sh
+    return
+  fi
+
+  cat <<'EOF'
+Autoresearch doctor:
+Health: doctor unavailable
+EOF
+}
+
+write_doctor_summary() {
+  current_doctor_summary > "$DOCTOR_SNAPSHOT_FILE"
+}
+
 current_next_brief() {
   if [ -x "scripts/autoresearch-next.sh" ] || [ -f "scripts/autoresearch-next.sh" ]; then
     sh scripts/autoresearch-next.sh
@@ -305,11 +322,15 @@ build_prompt() {
   next_brief_block="$(cat "$NEXT_BRIEF_FILE" 2>/dev/null || true)"
   module_block="$(module_prompt_block)"
   history_block="$(cat "$HISTORY_SNAPSHOT_FILE" 2>/dev/null || true)"
+  doctor_block="$(cat "$DOCTOR_SNAPSHOT_FILE" 2>/dev/null || true)"
   if [ -z "$status_block" ]; then
     status_block="$(current_status_snapshot "$baseline")"
   fi
   if [ -z "$history_block" ]; then
     history_block="$(current_history_summary)"
+  fi
+  if [ -z "$doctor_block" ]; then
+    doctor_block="$(current_doctor_summary)"
   fi
   if printf '%s\n' "$status_block" | rg -q '^Next iteration brief:'; then
     next_brief_block=""
@@ -353,6 +374,8 @@ Autoresearch repo state:
 $status_block
 
 $history_block
+
+$doctor_block
 
 $next_brief_block
 EOF
@@ -434,6 +457,7 @@ write_next_brief
 write_status_snapshot "$baseline_metric"
 write_module_summary
 write_history_summary
+write_doctor_summary
 printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
 
 if [ "$PRINT_ONLY" -eq 1 ]; then
@@ -487,6 +511,7 @@ while [ "$i" -le "$ITERATIONS" ]; do
   write_status_snapshot "$baseline_metric"
   write_module_summary
   write_history_summary
+  write_doctor_summary
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))
 done

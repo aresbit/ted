@@ -132,6 +132,12 @@ history_block() {
   fi
 }
 
+doctor_block() {
+  if [ -x "scripts/autoresearch-doctor.sh" ] || [ -f "scripts/autoresearch-doctor.sh" ]; then
+    sh scripts/autoresearch-doctor.sh
+  fi
+}
+
 metric_now="$(metric_value)"
 worktree_now="$(worktree_state)"
 best_metric="$(best_recorded_metric)"
@@ -153,6 +159,10 @@ printf 'Last recorded outcome: %s\n' "$last_result"
 history="$(history_block)"
 if [ -n "$history" ]; then
   printf '%s\n' "$history"
+fi
+doctor="$(doctor_block)"
+if [ -n "$doctor" ]; then
+  printf '%s\n' "$doctor"
 fi
 module_block="$(module_summary)"
 if [ -n "$module_block" ]; then
