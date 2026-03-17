@@ -138,6 +138,12 @@ doctor_block() {
   fi
 }
 
+rubric_block() {
+  if [ -x "scripts/autoresearch-rubric.sh" ] || [ -f "scripts/autoresearch-rubric.sh" ]; then
+    sh scripts/autoresearch-rubric.sh
+  fi
+}
+
 metric_now="$(metric_value)"
 worktree_now="$(worktree_state)"
 best_metric="$(best_recorded_metric)"
@@ -163,6 +169,10 @@ fi
 doctor="$(doctor_block)"
 if [ -n "$doctor" ]; then
   printf '%s\n' "$doctor"
+fi
+rubric="$(rubric_block)"
+if [ -n "$rubric" ]; then
+  printf '%s\n' "$rubric"
 fi
 module_block="$(module_summary)"
 if [ -n "$module_block" ]; then
