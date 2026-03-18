@@ -153,6 +153,7 @@ print_status_kv() {
     last_metric="$metric_now"
     last_baseline="$metric_now"
     last_delta="0"
+    decision_recommend="discard"
   else
     last_iteration="$(printf '%s\n' "$last_line" | awk -F '\t' '{ print $2 }')"
     last_baseline="$(printf '%s\n' "$last_line" | awk -F '\t' '{ print $3 }')"
@@ -160,6 +161,17 @@ print_status_kv() {
     last_status="$(printf '%s\n' "$last_line" | awk -F '\t' '{ print $5 }')"
     last_guard="$(printf '%s\n' "$last_line" | awk -F '\t' '{ print $6 }')"
     last_delta="$((last_metric - last_baseline))"
+    if [ "$last_guard" = "pass" ] && [ "$last_delta" -gt 0 ]; then
+      decision_recommend="keep"
+    else
+      decision_recommend="discard"
+    fi
+  fi
+
+  if [ "$worktree_now" = "clean" ]; then
+    loop_safety="auto-keep-discard"
+  else
+    loop_safety="observe-only"
   fi
 
   printf 'metric=%s\n' "$metric_now"
@@ -172,6 +184,8 @@ print_status_kv() {
   printf 'last_baseline=%s\n' "$last_baseline"
   printf 'last_metric=%s\n' "$last_metric"
   printf 'last_delta=%s\n' "$last_delta"
+  printf 'loop_safety=%s\n' "$loop_safety"
+  printf 'decision_recommend=%s\n' "$decision_recommend"
   printf 'repo_plugin_count=%s\n' "$(plugin_js_count "plugins")"
   printf 'runtime_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_PLUGIN_DIR")"
   printf 'runtime_lang_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_LANG_PLUGIN_DIR")"

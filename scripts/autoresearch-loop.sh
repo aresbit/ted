@@ -494,8 +494,11 @@ build_prompt() {
   machine_state_block="$(printf '%s\n' "$status_kv_block" | sed 's/^/- /')"
   focus_key_hint="$(status_kv_get "$status_kv_block" "focus_key" 2>/dev/null || status_get "$baseline" "focus_key" 2>/dev/null || printf "autoresearch-automation")"
   last_delta_hint="$(status_kv_get "$status_kv_block" "last_delta" 2>/dev/null || status_get "$baseline" "last_delta" 2>/dev/null || printf "0")"
+  decision_recommend_hint="$(status_kv_get "$status_kv_block" "decision_recommend" 2>/dev/null || status_get "$baseline" "decision_recommend" 2>/dev/null || printf "discard")"
   repo_plugin_hint="$(status_kv_get "$status_kv_block" "repo_plugin_count" 2>/dev/null || printf "0")"
   runtime_plugin_hint="$(status_kv_get "$status_kv_block" "runtime_plugin_count" 2>/dev/null || printf "0")"
+  loop_safety_hint="$(status_kv_get "$status_kv_block" "loop_safety" 2>/dev/null || printf "unavailable")"
+  decision_recommend_hint="$(status_kv_get "$status_kv_block" "decision_recommend" 2>/dev/null || printf "discard")"
   if printf '%s\n' "$status_block" | rg -q '^Autoresearch history:'; then
     history_block=""
   elif [ -z "$history_block" ]; then
@@ -574,6 +577,8 @@ Autoresearch loop hints:
 - last_delta (machine): $last_delta_hint
 - repo plugins (machine): $repo_plugin_hint
 - runtime plugins (machine): $runtime_plugin_hint
+- loop safety (machine): $loop_safety_hint
+- decision recommend (machine): $decision_recommend_hint
 
 Autoresearch repo state:
 ${status_block}
