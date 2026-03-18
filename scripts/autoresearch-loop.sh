@@ -391,8 +391,25 @@ append_result() {
 
 sanitize_note() {
   raw="$1"
-  note="$(printf '%s\n' "$raw" | awk 'NF { print; exit }')"
-  note="$(printf '%s\n' "$note" | sed 's/\[[^]]*\]([^)]*)//g' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')"
+
+  baseline_hint="$(printf '%s\n' "$raw" | awk -F ': *' '/^Baseline:/ { print $2; exit }')"
+  metric_hint="$(printf '%s\n' "$raw" | awk -F ': *' '/^Current metric:/ { print $2; exit }')"
+  if [ -n "$baseline_hint" ] && [ -n "$metric_hint" ]; then
+    printf '%s\n' "baseline $baseline_hint -> $metric_hint"
+    return
+  fi
+
+  note="$(printf '%s\n' "$raw" | awk '
+    NF {
+      line=$0
+      sub(/^[[:space:]]+/, "", line)
+      if (line ~ /^[-*#]/) next
+      if (line ~ /^[0-9]+\./) next
+      print line
+      exit
+    }
+  ')"
+  note="$(printf '%s\n' "$note" | sed 's/\[[^]]*\]([^)]*)//g' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//' | sed 's/[：:]$//')"
   if [ -z "$note" ]; then
     printf '%s\n' 'no agent summary captured'
     return
@@ -405,7 +422,7 @@ sanitize_note() {
       ;;
   esac
 
-  printf '%s\n' "$(printf '%s' "$note" | cut -c1-240)"
+  printf '%s\n' "$(printf '%s' "$note" | cut -c1-160)"
 }
 
 build_prompt() {
