@@ -191,6 +191,11 @@ memory_block() {
 }
 
 last_decision_args() {
+  if [ -n "$BASELINE_OVERRIDE" ]; then
+    printf '%s\t%s\t%s\n' "$BASELINE_OVERRIDE" "$metric_now" "pass"
+    return
+  fi
+
   if [ ! -f "$RESULTS_FILE" ]; then
     printf '%s\t%s\t%s\n' "$metric_now" "$metric_now" "pass"
     return
@@ -214,17 +219,20 @@ last_decision_args() {
 }
 
 decision_block() {
-  if [ -s "$DECISION_SNAPSHOT_FILE" ]; then
+  if [ -z "$BASELINE_OVERRIDE" ] && [ -s "$DECISION_SNAPSHOT_FILE" ]; then
     cat "$DECISION_SNAPSHOT_FILE"
-  elif [ -x "scripts/autoresearch-decision.sh" ] || [ -f "scripts/autoresearch-decision.sh" ]; then
+    return
+  fi
+
+  if [ -x "scripts/autoresearch-decision.sh" ] || [ -f "scripts/autoresearch-decision.sh" ]; then
     decision_args="$(last_decision_args)"
-    decision_baseline="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $1 }')"
-    decision_metric="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $2 }')"
-    decision_guard="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $3 }')"
-    sh scripts/autoresearch-decision.sh \
-      --baseline "$decision_baseline" \
-      --metric "$decision_metric" \
-      --guard "$decision_guard"
+    decision_baseline="$(printf '%s
+' "$decision_args" | awk -F '	' '{ print $1 }')"
+    decision_metric="$(printf '%s
+' "$decision_args" | awk -F '	' '{ print $2 }')"
+    decision_guard="$(printf '%s
+' "$decision_args" | awk -F '	' '{ print $3 }')"
+    sh scripts/autoresearch-decision.sh       --baseline "$decision_baseline"       --metric "$decision_metric"       --guard "$decision_guard"
   fi
 }
 

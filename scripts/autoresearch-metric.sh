@@ -78,6 +78,7 @@ add_if_rg 'Keep status snapshot last|write_status_snapshot "\$baseline_metric"' 
 add_if_rg 'Autoresearch history:|Autoresearch doctor:|Autoresearch rubric:|Autoresearch capabilities:|Autoresearch priority:|Autoresearch memory:|Autoresearch decision:' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'baseline_hint|metric_hint|baseline \$baseline_hint -> \$metric_hint' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Autoresearch history:|Recent trend:|Last window:' "scripts/autoresearch-status.sh" 5
+add_if_rg 'BASELINE_OVERRIDE|last_decision_args|\$BASELINE_OVERRIDE	\$metric_now' "scripts/autoresearch-status.sh" 5
 add_if_rg 'HISTORY_SNAPSHOT_FILE|autoresearch-history\.sh|current_history_summary' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Autoresearch doctor:|Health: worktree|Health: result notes|Warning:' "scripts/autoresearch-status.sh" 5
 add_if_rg 'DOCTOR_SNAPSHOT_FILE|autoresearch-doctor\.sh|current_doctor_summary' "scripts/autoresearch-loop.sh" 5
