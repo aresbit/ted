@@ -67,7 +67,7 @@ else
 endif
 
 # Default target
-.PHONY: all clean debug format install uninstall smoke autoresearch-metric tui-beauty-metric autoresearch-baseline autoresearch-focus autoresearch-next autoresearch-status autoresearch-module autoresearch-loop deps-mqjs deps-libiui
+.PHONY: all clean debug format install uninstall smoke autoresearch-metric tui-beauty-metric autoresearch-baseline autoresearch-focus autoresearch-next autoresearch-status autoresearch-module autoresearch-loop deps-mqjs deps-libiui plugins plugins-install plugins-sync plugins-align
 
 ARGS ?=
 
@@ -188,3 +188,13 @@ deps-libiui:
 	@if [ ! -f "$(LIBIUI_SRC_DIR)/md3-flags-gen.inc" ] || [ ! -f "$(LIBIUI_SRC_DIR)/md3-validate-gen.inc" ]; then \
 		$(MAKE) -C $(LIBIUI_DIR) gen-md3 >/dev/null; \
 	fi
+
+plugins-install:
+	sh ./scripts/install-plugins.sh
+
+plugins-sync:
+	sh ./scripts/sync-plugins-from-home.sh
+
+plugins-align: plugins-sync plugins-install
+
+plugins: plugins-install

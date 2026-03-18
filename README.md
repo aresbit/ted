@@ -202,6 +202,19 @@ TED 已支持 JS 插件自动加载：
 仓库内提供了一组可直接安装的示例插件（`plugins/`），可执行：
 
 ```bash
+make plugins-install
+```
+
+如果你在当前机器已积累 `~/.ted/plugins`，想同步回仓库并再安装到本机（便于多端对齐）：
+
+```bash
+make plugins-align
+```
+
+等价命令：
+
+```bash
+sh scripts/sync-plugins-from-home.sh
 sh scripts/install-plugins.sh
 ```
 
