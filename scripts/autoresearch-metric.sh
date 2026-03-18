@@ -75,6 +75,7 @@ add_if_rg 'mquickjs-runtime|tree-sitter-intelligence|libiui-workbench|convex-ske
 add_if_rg 'autoresearch/protocol\.md|autoresearch/workflows\.md|scripts/autoresearch-module\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'sanitize_note|non-iteration summary captured|last-output\.txt' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Keep status snapshot last|write_status_snapshot "\$baseline_metric"' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'Autoresearch history:|Autoresearch doctor:|Autoresearch rubric:|Autoresearch capabilities:|Autoresearch priority:|Autoresearch memory:|Autoresearch decision:' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Autoresearch history:|Recent trend:|Last window:' "scripts/autoresearch-status.sh" 5
 add_if_rg 'HISTORY_SNAPSHOT_FILE|autoresearch-history\.sh|current_history_summary' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Autoresearch doctor:|Health: worktree|Health: result notes|Warning:' "scripts/autoresearch-status.sh" 5

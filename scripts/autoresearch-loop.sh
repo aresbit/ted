@@ -423,26 +423,40 @@ build_prompt() {
   if [ -z "$status_block" ]; then
     status_block="$(current_status_snapshot "$baseline")"
   fi
-  if [ -z "$history_block" ]; then
+  if printf '%s\n' "$status_block" | rg -q '^Autoresearch history:'; then
+    history_block=""
+  elif [ -z "$history_block" ]; then
     history_block="$(current_history_summary)"
   fi
-  if [ -z "$doctor_block" ]; then
+  if printf '%s\n' "$status_block" | rg -q '^Autoresearch doctor:'; then
+    doctor_block=""
+  elif [ -z "$doctor_block" ]; then
     doctor_block="$(current_doctor_summary)"
   fi
-  if [ -z "$rubric_block" ]; then
+  if printf '%s\n' "$status_block" | rg -q '^Autoresearch rubric:'; then
+    rubric_block=""
+  elif [ -z "$rubric_block" ]; then
     rubric_block="$(current_rubric_summary)"
   fi
-  if [ -z "$decision_block" ]; then
-    decision_block="$(current_decision_summary "$baseline" "$baseline" "pass")"
-  fi
-  if [ -z "$capabilities_block" ]; then
+  if printf '%s\n' "$status_block" | rg -q '^Autoresearch capabilities:'; then
+    capabilities_block=""
+  elif [ -z "$capabilities_block" ]; then
     capabilities_block="$(current_capabilities_summary)"
   fi
-  if [ -z "$priority_block" ]; then
+  if printf '%s\n' "$status_block" | rg -q '^Autoresearch priority:'; then
+    priority_block=""
+  elif [ -z "$priority_block" ]; then
     priority_block="$(current_priority_summary)"
   fi
-  if [ -z "$memory_block" ]; then
+  if printf '%s\n' "$status_block" | rg -q '^Autoresearch memory:'; then
+    memory_block=""
+  elif [ -z "$memory_block" ]; then
     memory_block="$(current_memory_summary)"
+  fi
+  if printf '%s\n' "$status_block" | rg -q '^Autoresearch decision:'; then
+    decision_block=""
+  elif [ -z "$decision_block" ]; then
+    decision_block="$(current_decision_summary "$baseline" "$baseline" "pass")"
   fi
   if printf '%s\n' "$status_block" | rg -q '^Next iteration brief:'; then
     next_brief_block=""
