@@ -287,7 +287,30 @@ static bool cmd_edit_force(sp_str_t arg) {
 
 static bool cmd_help(sp_str_t arg) {
     (void)arg;
-    editor_set_message("TED v" TED_VERSION " | :llm :js :source");
+    editor_set_message("TED v" TED_VERSION " | :llm :js :source :theme");
+    return true;
+}
+
+static bool cmd_theme(sp_str_t arg) {
+    if (arg.len == 0 || sp_str_equal(arg, sp_str_lit("status"))) {
+        sp_str_t now = iui_tui_theme_name();
+        sp_str_t opts = iui_tui_theme_options();
+        editor_set_message("UI theme: %.*s | options: %.*s",
+                           (int)now.len, now.data,
+                           (int)opts.len, opts.data);
+        return true;
+    }
+
+    if (!iui_tui_set_theme(arg)) {
+        sp_str_t opts = iui_tui_theme_options();
+        editor_set_message("Unknown theme: %.*s | options: %.*s",
+                           (int)arg.len, arg.data,
+                           (int)opts.len, opts.data);
+        return true;
+    }
+
+    sp_str_t now = iui_tui_theme_name();
+    editor_set_message("UI theme switched to %.*s", (int)now.len, now.data);
     return true;
 }
 
@@ -523,6 +546,7 @@ static const command_spec_t COMMANDS[] = {
     { "llmshow", cmd_llmshow },
     { "llmcopy", cmd_llmcopy },
     { "llmstatus", cmd_llmstatus },
+    { "theme", cmd_theme },
     { "js", cmd_js },
     { "source", cmd_source },
     { "plugins", cmd_plugins },

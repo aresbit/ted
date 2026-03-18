@@ -33,8 +33,8 @@ EOF
     libiui-workbench)
       cat <<'EOF'
 Autoresearch priority:
-1. ui workbench
-2. convex sketch
+1. ui beauty workbench
+2. theme + runtime dock polish
 3. autoresearch automation
 EOF
       ;;

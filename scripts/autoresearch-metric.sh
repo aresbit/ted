@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 score=0
 build_log="$ROOT_DIR/tmp/autoresearch-metric-build.log"
+beauty_score=0
 
 mkdir -p "$ROOT_DIR/tmp"
 
@@ -66,6 +67,10 @@ add_if_file "scripts/autoresearch-decision.sh" 5
 add_if_file "scripts/autoresearch-capabilities.sh" 5
 add_if_file "scripts/autoresearch-priority.sh" 5
 add_if_file "scripts/autoresearch-memory.sh" 5
+add_if_file "scripts/tui-beauty-metric.sh" 5
+add_if_rg 'cmd_theme|\"theme\"' "src/command.c" 5
+add_if_rg 'iui_tui_set_theme|cyber,amber,mono|theme %s' "src/iui_tui.c" 5
+add_if_rg 'libiui-workbench|ui workbench' "scripts/autoresearch-focus.sh" 5
 add_if_rg 'mquickjs-runtime|tree-sitter-intelligence|libiui-workbench|convex-sketch|llm-copilot' "scripts/autoresearch-focus.sh" 5
 add_if_rg 'autoresearch/protocol\.md|autoresearch/workflows\.md|scripts/autoresearch-module\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'sanitize_note|non-iteration summary captured|last-output\.txt' "scripts/autoresearch-loop.sh" 5
@@ -86,5 +91,15 @@ add_if_rg 'PRIORITY_SNAPSHOT_FILE|autoresearch-priority\.sh|current_priority_sum
 add_if_rg 'Autoresearch memory:|check_file status|check_file brief|check_file decision|check_file capabilities' "scripts/autoresearch-memory.sh" 5
 add_if_rg 'memory_block|autoresearch-memory\.sh' "scripts/autoresearch-status.sh" 5
 add_if_rg 'MEMORY_SNAPSHOT_FILE|autoresearch-memory\.sh|current_memory_summary' "scripts/autoresearch-loop.sh" 5
+
+if [ -f "scripts/tui-beauty-metric.sh" ]; then
+  beauty_score="$(sh scripts/tui-beauty-metric.sh 2>/dev/null || printf '0')"
+  case "$beauty_score" in
+    ''|*[!0-9]*)
+      beauty_score=0
+      ;;
+  esac
+  score=$((score + beauty_score))
+fi
 
 printf '%s\n' "$score"

@@ -95,8 +95,9 @@ touch_targets() {
       ;;
     libiui-workbench)
       printf '%s\n' 'src/iui_tui.c'
-      printf '%s\n' 'src/display.c'
+      printf '%s\n' 'src/command.c'
       printf '%s\n' 'docs/ui-tui-design.md'
+      printf '%s\n' 'README.md'
       ;;
     convex-sketch)
       printf '%s\n' 'src/sketch.c'

@@ -324,6 +324,18 @@ static const iui_theme_t *tui_active_theme(void) {
     return &S.presets[S.active_theme].theme;
 }
 
+static u32 tui_theme_count(void) {
+    return (u32)(sizeof(S.presets) / sizeof(S.presets[0]));
+}
+
+static s32 tui_theme_index(sp_str_t name) {
+    if (name.len == 0) return -1;
+    for (u32 i = 0; i < tui_theme_count(); i++) {
+        if (sp_str_equal(name, sp_str_from_cstr(S.presets[i].name))) return (s32)i;
+    }
+    return -1;
+}
+
 static void tui_recompute_defaults(void) {
     const iui_theme_t *t = tui_active_theme();
     S.default_fg = srgb_to_ansi256(t->on_surface);
@@ -367,7 +379,48 @@ static void tui_presets_init(void) {
     S.presets[0].theme.inverse_primary = 0xFF006B7A;
 
     S.presets[1] = S.presets[0];
+    S.presets[1].name = "amber";
+    S.presets[1].theme.primary = 0xFFFFD166;
+    S.presets[1].theme.on_primary = 0xFF151008;
+    S.presets[1].theme.primary_container = 0xFF4F3A11;
+    S.presets[1].theme.on_primary_container = 0xFFFFF0CB;
+    S.presets[1].theme.secondary = 0xFFFF9E7A;
+    S.presets[1].theme.secondary_container = 0xFF533122;
+    S.presets[1].theme.tertiary = 0xFFFFEFC1;
+    S.presets[1].theme.tertiary_container = 0xFF3B3421;
+    S.presets[1].theme.surface = 0xFF15120E;
+    S.presets[1].theme.on_surface = 0xFFF5E8D3;
+    S.presets[1].theme.surface_variant = 0xFF221C14;
+    S.presets[1].theme.on_surface_variant = 0xFFE6D7BE;
+    S.presets[1].theme.surface_container_lowest = 0xFF0E0B08;
+    S.presets[1].theme.surface_container_low = 0xFF1B1711;
+    S.presets[1].theme.surface_container = 0xFF231E16;
+    S.presets[1].theme.surface_container_high = 0xFF2D261D;
+    S.presets[1].theme.surface_container_highest = 0xFF382F24;
+    S.presets[1].theme.outline = 0xFFE3A64A;
+    S.presets[1].theme.outline_variant = 0xFF7F6640;
+
     S.presets[2] = S.presets[0];
+    S.presets[2].name = "mono";
+    S.presets[2].theme.primary = 0xFFD1D4D9;
+    S.presets[2].theme.on_primary = 0xFF101215;
+    S.presets[2].theme.primary_container = 0xFF343A43;
+    S.presets[2].theme.on_primary_container = 0xFFE8EDF2;
+    S.presets[2].theme.secondary = 0xFFAEB5BF;
+    S.presets[2].theme.secondary_container = 0xFF30353C;
+    S.presets[2].theme.tertiary = 0xFFCCD0D6;
+    S.presets[2].theme.tertiary_container = 0xFF3A3E45;
+    S.presets[2].theme.surface = 0xFF0F1114;
+    S.presets[2].theme.on_surface = 0xFFE2E5EA;
+    S.presets[2].theme.surface_variant = 0xFF191C21;
+    S.presets[2].theme.on_surface_variant = 0xFFC4CAD3;
+    S.presets[2].theme.surface_container_lowest = 0xFF090B0E;
+    S.presets[2].theme.surface_container_low = 0xFF12161A;
+    S.presets[2].theme.surface_container = 0xFF1A1F25;
+    S.presets[2].theme.surface_container_high = 0xFF232A33;
+    S.presets[2].theme.surface_container_highest = 0xFF2E3744;
+    S.presets[2].theme.outline = 0xFF9BA5B4;
+    S.presets[2].theme.outline_variant = 0xFF596273;
     S.active_theme = 0;
     tui_recompute_defaults();
 }
@@ -683,7 +736,7 @@ static void make_session_summary(c8 *buf, u32 cap) {
         snprintf(llm_buf, sizeof(llm_buf), "llm:off");
     }
 
-    snprintf(buf, cap, "%s %s %s", lang_buf, ts_buf, llm_buf);
+    snprintf(buf, cap, "%s %s %s th:%s", lang_buf, ts_buf, llm_buf, S.presets[S.active_theme].name);
 }
 
 static void make_runtime_dock_message(c8 *buf, u32 cap) {
@@ -725,6 +778,13 @@ static void tui_toggle_syntax(void) {
 static void tui_toggle_focus(void) {
     S.focused = !S.focused;
     editor_set_message(S.focused ? "UI focus ON (Tab/Enter/Esc)" : "UI focus OFF");
+}
+
+static void tui_cycle_theme(void) {
+    if (!S.ready) return;
+    S.active_theme = (S.active_theme + 1) % tui_theme_count();
+    tui_recompute_defaults();
+    editor_set_message("UI theme: %s", S.presets[S.active_theme].name);
 }
 
 static int tui_current_tab_index(void) {
@@ -906,10 +966,11 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
         tui_active_theme()->secondary_container,
         tui_active_theme()->tertiary_container,
         tui_active_theme()->secondary,
+        tui_active_theme()->outline,
     };
     iui_sizing_t sizes[] = {
         IUI_GROW(2), IUI_GROW(2), IUI_GROW(2),
-        IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1),
+        IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1),
     };
 
     tui_draw_row_band(row_rect,
@@ -918,7 +979,7 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
 
     iui_box_begin(S.ctx, &(iui_box_config_t){
         .direction = IUI_DIR_ROW,
-        .child_count = 7,
+        .child_count = 8,
         .sizes = sizes,
         .gap = 1.0f,
         .padding = IUI_PAD_XY(0.0f, 0.0f),
@@ -933,7 +994,7 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
         tui_draw_compact_chip(rect, tab_labels[i], active, tui_active_theme()->primary, true);
     }
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         iui_rect_t rect = iui_box_next(S.ctx);
         c8 label[24];
         bool active = false;
@@ -943,6 +1004,9 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
             case 1: tui_toggle_syntax(); break;
             case 2: tui_toggle_focus(); break;
             case 3:
+                tui_cycle_theme();
+                break;
+            case 4:
                 sketch_clear();
                 editor_set_message("Sketch canvas cleared");
                 break;
@@ -963,6 +1027,10 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
             active = S.focused;
             break;
         case 3:
+            snprintf(label, sizeof(label), "theme %s", S.presets[S.active_theme].name);
+            active = true;
+            break;
+        case 4:
             snprintf(label, sizeof(label), "clear");
             active = sketch_clear_ready;
             break;
@@ -980,7 +1048,7 @@ static void tui_draw_status_row(iui_rect_t row_rect) {
     c8 mode_buf[32];
     c8 geometry_buf[56];
     c8 runtime_buf[40];
-    c8 session_buf[64];
+    c8 session_buf[80];
     u32 shapes = sketch_shape_count();
     u32 stroke_pts = sketch_stroke_point_count();
 
@@ -1128,8 +1196,17 @@ void iui_tui_blit(sp_io_writer_t *out, u32 start_row) {
 }
 
 bool iui_tui_set_theme(sp_str_t name) {
-    (void)name;
-    return false;
+    if (!S.ready || name.len == 0) return false;
+    if (sp_str_equal(name, sp_str_lit("next"))) {
+        S.active_theme = (S.active_theme + 1) % tui_theme_count();
+        tui_recompute_defaults();
+        return true;
+    }
+    s32 idx = tui_theme_index(name);
+    if (idx < 0) return false;
+    S.active_theme = (u32)idx;
+    tui_recompute_defaults();
+    return true;
 }
 
 sp_str_t iui_tui_theme_name(void) {
@@ -1137,5 +1214,5 @@ sp_str_t iui_tui_theme_name(void) {
 }
 
 sp_str_t iui_tui_theme_options(void) {
-    return sp_str_lit("cyber");
+    return sp_str_lit("cyber,amber,mono");
 }

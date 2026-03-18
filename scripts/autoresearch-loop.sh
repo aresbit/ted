@@ -460,16 +460,16 @@ Read these files first:
 - autoresearch/protocol.md
 - autoresearch/workflows.md
 
-Goal: Increase TED autoresearch readiness and product quality.
+Goal: Increase TED TUI beauty, autoresearch readiness, and product quality.
 Scope: src/*.c, src/*.h, docs/*.md, README.md, program.md, scripts/*.sh, Makefile
-Metric: TED autoresearch readiness score (higher is better)
+Metric: TED composite score (readiness + tui beauty, higher is better)
 Baseline: $baseline
 Verify: sh scripts/autoresearch-metric.sh
 Guard: make smoke
 
 Protocol:
 1. Make exactly one focused improvement iteration.
-2. Prefer work that improves plugin extensibility, sketch capability, cyber pixel UI, or autoresearch automation.
+2. Prefer work that improves libiui TUI beauty, plugin extensibility, sketch capability, or autoresearch automation.
 3. Run the verify command and the guard.
 4. Do not commit your changes; the loop driver will decide keep/discard.
 5. If the metric does not improve, or the guard fails, leave the worktree as-is so the loop driver can revert it safely.

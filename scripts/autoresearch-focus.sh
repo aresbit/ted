@@ -56,6 +56,16 @@ pick_focus() {
     return
   fi
 
+  if ! rg -q 'cmd_theme|\"theme\"' src/command.c README.md 2>/dev/null; then
+    printf '%s\n' 'libiui-workbench'
+    return
+  fi
+
+  if ! rg -q 'cyber,amber,mono|iui_tui_set_theme' src/iui_tui.c 2>/dev/null; then
+    printf '%s\n' 'libiui-workbench'
+    return
+  fi
+
   if ! rg -q '凸优化增强几何画图能力|统一目标函数|对象可编辑性' program.md src/sketch.c 2>/dev/null; then
     printf '%s\n' 'convex-sketch'
     return
@@ -99,8 +109,8 @@ EOF
     libiui-workbench)
       cat <<'EOF'
 Focus area: libiui workbench
-Why now: program.md makes the workbench a core axis, but terminal UI still has room for stronger workspace semantics and clearer runtime presentation.
-Suggested move: ship one productized panel, dock behavior, or state band that makes the workbench feel more operational.
+Why now: program.md makes the workbench a core axis, and the biggest visible product gain is still in TUI polish, themeability, and runtime panel clarity.
+Suggested move: ship one measurable visual upgrade that raises tui-beauty score while keeping smoke/metric green.
 EOF
       ;;
     convex-sketch)

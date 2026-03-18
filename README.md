@@ -177,6 +177,8 @@ ted
 | `:llmshow` | 预览最近一次 LLM 结果 |
 | `:llmcopy` | 把最近一次 LLM 结果复制到剪贴板 |
 | `:llmstatus` | 查看 LLM 配置状态 |
+| `:theme status` | 查看当前 TUI 主题与可用主题 |
+| `:theme cyber/amber/mono/next` | 切换 libiui 工作台主题 |
 | `:sketch auto` | 打开草图模式并自动识别图形 |
 | `:sketch line/rect/square/ellipse/circle` | 强制拟合指定图形 |
 | `:sketch clear` | 清空画布 |
@@ -185,7 +187,8 @@ ted
 | `:recognizers` | 查看已注册的 JS 图形识别器 |
 | `:help` | 显示帮助 |
 
-本地 autoresearch 现在已经融合成仓库内的“编辑器自优化模块”。可先运行 `make autoresearch-module` 查看当前协议入口，再运行 `make autoresearch-focus` 查看下一轮优先主题，运行 `make autoresearch-next` 生成下一轮执行 brief，或运行 `make autoresearch-status` 查看当前 metric、worktree 安全状态、上一轮结果和下一轮建议，最后执行 `make autoresearch-loop ARGS='-n 3 --resume-last'`。
+本地 autoresearch 现在已经融合成仓库内的“编辑器自优化模块”。可先运行 `make autoresearch-module` 查看当前协议入口，再运行 `make autoresearch-focus` 查看下一轮优先主题，运行 `make autoresearch-next` 生成下一轮执行 brief，或运行 `make autoresearch-status` 查看当前 metric、worktree 安全状态、上一轮结果和下一轮建议。  
+如果要专门拉升 TUI 产品感，先跑 `make tui-beauty-metric`，再执行 `make autoresearch-loop ARGS='-n 3 --resume-last'`。
 
 ### 文本选择
 

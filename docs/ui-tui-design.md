@@ -38,6 +38,8 @@
   - libiui 键盘焦点状态
 - `[text deck]` / `[shape lab]` / `[runtime]`
   - 工作台主区域切换
+- `[theme cyber|amber|mono]`
+  - 主题切换动作必须可见、可点击、可命令化（`:theme`）
 - `[wipe canvas]`
   - 清空几何画布
 - runtime dock action

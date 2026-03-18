@@ -21,9 +21,10 @@
 - 目标约束：`program.md`
 - 回归 guard：`make smoke`
 - 机械指标：`scripts/autoresearch-metric.sh`
+- TUI 美观子指标：`scripts/tui-beauty-metric.sh`
 - 仓库内自优化协议模块：`autoresearch/protocol.md` + `autoresearch/workflows.md`
 
-这个指标当前是一个 0-120 的 readiness score，覆盖：
+这个指标当前是复合分（readiness + TUI beauty），覆盖：
 
 - 能否构建
 - 能否通过 smoke
@@ -48,6 +49,7 @@
 ### Metric
 
 - `scripts/autoresearch-metric.sh`
+- `scripts/tui-beauty-metric.sh`
 - 方向：higher is better
 
 ### Verify
@@ -68,9 +70,9 @@ make smoke
 
 ```text
 /autoresearch
-Goal: Increase TED autoresearch readiness and product quality
+Goal: Increase TED TUI beauty, autoresearch readiness, and product quality
 Scope: src/*.c, src/*.h, docs/*.md, README.md, program.md
-Metric: autoresearch readiness score (higher is better)
+Metric: composite score (readiness + tui beauty, higher is better)
 Verify: sh scripts/autoresearch-metric.sh
 Guard: make smoke
 ```
@@ -79,9 +81,9 @@ Guard: make smoke
 
 ```text
 /loop 5 /autoresearch
-Goal: Increase TED autoresearch readiness and product quality
+Goal: Increase TED TUI beauty, autoresearch readiness, and product quality
 Scope: src/*.c, src/*.h, docs/*.md, README.md, program.md
-Metric: autoresearch readiness score (higher is better)
+Metric: composite score (readiness + tui beauty, higher is better)
 Verify: sh scripts/autoresearch-metric.sh
 Guard: make smoke
 ```
@@ -101,6 +103,7 @@ make autoresearch-focus
 make autoresearch-next
 make autoresearch-status
 make autoresearch-module
+make tui-beauty-metric
 make autoresearch-loop ARGS='-n 3 --resume-last'
 make autoresearch-loop ARGS='--print-prompt'
 ```
