@@ -576,7 +576,6 @@ discard_iteration() {
 baseline_metric="$(metric_value)"
 write_current_focus
 write_next_brief
-write_status_snapshot "$baseline_metric"
 write_module_summary
 write_history_summary
 write_doctor_summary
@@ -585,6 +584,8 @@ write_capabilities_summary
 write_priority_summary
 write_memory_summary
 write_decision_summary "$baseline_metric" "$baseline_metric" "pass"
+# Keep status snapshot last so it captures fresh summary snapshots.
+write_status_snapshot "$baseline_metric"
 printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
 
 if [ "$PRINT_ONLY" -eq 1 ]; then
@@ -640,7 +641,6 @@ while [ "$i" -le "$ITERATIONS" ]; do
 
   write_current_focus
   write_next_brief
-  write_status_snapshot "$baseline_metric"
   write_module_summary
   write_history_summary
   write_doctor_summary
@@ -649,6 +649,8 @@ while [ "$i" -le "$ITERATIONS" ]; do
   write_priority_summary
   write_memory_summary
   write_decision_summary "$decision_baseline" "$decision_metric" "$guard_status"
+  # Keep status snapshot last so it captures fresh summary snapshots.
+  write_status_snapshot "$baseline_metric"
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))
 done
