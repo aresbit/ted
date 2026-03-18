@@ -192,6 +192,21 @@ ted
 本地 autoresearch 现在已经融合成仓库内的“编辑器自优化模块”。可先运行 `make autoresearch-module` 查看当前协议入口，再运行 `make autoresearch-focus` 查看下一轮优先主题，运行 `make autoresearch-next` 生成下一轮执行 brief，或运行 `make autoresearch-status` 查看当前 metric、worktree 安全状态、上一轮结果和下一轮建议。  
 如果要专门拉升 TUI 产品感，先跑 `make tui-beauty-metric`，再执行 `make autoresearch-loop ARGS='-n 3 --resume-last'`。
 
+### 插件系统（Runtime Dock）
+
+TED 已支持 JS 插件自动加载：
+
+- `~/.ted/plugins/*.js`
+- `~/.ted/plugins/lang/*.js`
+
+仓库内提供了一组可直接安装的示例插件（`plugins/`），可执行：
+
+```bash
+sh scripts/install-plugins.sh
+```
+
+安装后在编辑器里执行 `:plugins` 可重载并查看已加载插件。
+
 ### 文本选择
 
 - `Shift+方向键` - 选择文本

@@ -10,6 +10,15 @@ beauty_score=0
 
 mkdir -p "$ROOT_DIR/tmp"
 
+plugin_count() {
+  if [ ! -d "plugins" ]; then
+    printf '0
+'
+    return
+  fi
+  find plugins -type f -name '*.js' | wc -l | tr -d ' '
+}
+
 add_if_file() {
   file="$1"
   points="$2"
@@ -68,6 +77,7 @@ add_if_file "scripts/autoresearch-capabilities.sh" 5
 add_if_file "scripts/autoresearch-priority.sh" 5
 add_if_file "scripts/autoresearch-memory.sh" 5
 add_if_file "scripts/tui-beauty-metric.sh" 5
+add_if_file "scripts/install-plugins.sh" 5
 add_if_rg 'cmd_theme|\"theme\"' "src/command.c" 5
 add_if_rg 'iui_tui_set_theme|cyber,amber,mono|theme %s' "src/iui_tui.c" 5
 add_if_rg 'libiui-workbench|ui workbench' "scripts/autoresearch-focus.sh" 5
@@ -105,6 +115,19 @@ if [ -f "scripts/tui-beauty-metric.sh" ]; then
       ;;
   esac
   score=$((score + beauty_score))
+fi
+
+count="$(plugin_count)"
+case "$count" in
+  ''|*[!0-9]*) count=0 ;;
+esac
+if [ "$count" -gt 0 ]; then
+  # Reward concrete plugin inventory; cap to keep balance with build/smoke checks.
+  plugin_points=$((count * 4))
+  if [ "$plugin_points" -gt 40 ]; then
+    plugin_points=40
+  fi
+  score=$((score + plugin_points))
 fi
 
 printf '%s\n' "$score"
