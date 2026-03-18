@@ -147,6 +147,25 @@ last_outcome() {
   }'
 }
 
+recent_metric_delta() {
+  line="$(last_result_line || true)"
+  if [ -z "$line" ]; then
+    printf '%s\n' 'n/a'
+    return
+  fi
+
+  printf '%s\n' "$line" | awk -F '\t' '{
+    baseline = $3 + 0
+    metric = $4 + 0
+    delta = metric - baseline
+    if (delta >= 0) {
+      printf "+%d", delta
+    } else {
+      printf "%d", delta
+    }
+  }'
+}
+
 print_brief() {
   current_mode="$(mode_key)"
   printf '%s\n' 'Next iteration brief:'
@@ -154,6 +173,7 @@ print_brief() {
   printf 'Focus key: %s\n' "$(focus_key)"
   printf 'Why this move: %s\n' "$(mode_reason)"
   printf 'Last outcome: %s\n' "$(last_outcome)"
+  printf 'Last metric delta: %s\n' "$(recent_metric_delta)"
   printf '%s\n' 'Touch first:'
   touch_targets | sed 's/^/- /'
   printf '%s\n' 'Verify:'
