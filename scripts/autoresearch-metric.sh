@@ -59,6 +59,7 @@ add_if_rg 'digital_rain_run_for_ms|line_len_min|head_color' "src/main.c" 5
 add_if_rg 'random_ascii|draw_frame|head_color|text_color|bg_color' "src/digital_rain.c" 5
 add_if_rg 'gesture|libiui\+mquickjs|TED//STUDIO|sketch:on|sketch:off' "src/iui_tui.c" 5
 add_if_rg 'grid_glyph|sketch_shapes_json|preview' "src/sketch.c" 5
+add_if_rg 'stroke_cornerness|step_dist|point_segment_distance|glyph_for_distance' "src/sketch.c" 5
 add_if_rg '^\.autoresearch/$|^tmp/$|^vendor/mquickjs/\*\.o$|^vendor/mquickjs/\*\.d$' ".gitignore" 5
 add_if_file "scripts/autoresearch-focus.sh" 5
 add_if_rg 'Current focus recommendation|Previous loop outcome|NEXT_FOCUS_FILE|autoresearch-focus\.sh' "scripts/autoresearch-loop.sh" 5
@@ -70,6 +71,9 @@ add_if_rg 'decision_recommend_hint|decision_recommend \(machine\)|status_kv_get'
 add_if_rg 'status_kv_get|repo_plugin_hint|runtime_plugin_hint|status_kv_block' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'loop_safety_hint|decision_recommend_hint|loop safety \(machine\)|decision recommend \(machine\)' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'decision_confidence_hint|decision confidence \(machine\)' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'next_action_hint|next action \(machine\)' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'action_reason_hint|action reason \(machine\)' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'decision_score_hint|decision score \(machine\)' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-next.sh" 5
 add_if_rg 'Next iteration brief|NEXT_BRIEF_FILE|autoresearch-next\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-module.sh" 5
@@ -99,6 +103,9 @@ add_if_rg 'PRINT_KV|--kv|print_status_kv|focus_key=|last_delta=' "scripts/autore
 add_if_rg 'GET_KEY|--get|get_status_value|unknown status key' "scripts/autoresearch-status.sh" 5
 add_if_rg 'loop_safety=|decision_recommend=|observe-only|auto' "scripts/autoresearch-status.sh" 5
 add_if_rg 'decision_confidence=|medium|high|low' "scripts/autoresearch-status.sh" 5
+add_if_rg 'next_action=|keep-review|discard|keep' "scripts/autoresearch-status.sh" 5
+add_if_rg 'action_reason=|dirty-worktree-observe-only|guard-pass-delta-ge-10|no-metric-gain-or-guard-fail' "scripts/autoresearch-status.sh" 5
+add_if_rg 'decision_score=|90|80|65|35|20' "scripts/autoresearch-status.sh" 5
 add_if_rg 'decision_recommend|last_guard|last_delta' "scripts/autoresearch-status.sh" 5
 add_if_rg 'recent_metric_delta|Last metric delta' "scripts/autoresearch-next.sh" 5
 add_if_rg 'HISTORY_SNAPSHOT_FILE|autoresearch-history\.sh|current_history_summary' "scripts/autoresearch-loop.sh" 5

@@ -175,6 +175,37 @@ print_status_kv() {
     decision_confidence="medium"
   fi
 
+  next_action="discard"
+  if [ "$decision_recommend" = "keep" ] && [ "$decision_confidence" = "high" ]; then
+    next_action="keep"
+  elif [ "$decision_recommend" = "keep" ] && [ "$decision_confidence" = "medium" ]; then
+    next_action="keep-review"
+  fi
+
+  action_reason="no-metric-gain-or-guard-fail"
+  if [ "$next_action" = "keep" ]; then
+    action_reason="guard-pass-delta-ge-10"
+  elif [ "$next_action" = "keep-review" ]; then
+    action_reason="guard-pass-delta-gt-0"
+  elif [ "$worktree_now" = "dirty" ]; then
+    action_reason="dirty-worktree-observe-only"
+  fi
+
+  decision_score="20"
+  if [ "$decision_confidence" = "high" ]; then
+    decision_score="90"
+  elif [ "$decision_confidence" = "medium" ]; then
+    decision_score="65"
+  elif [ "$decision_confidence" = "low" ]; then
+    decision_score="35"
+  fi
+  if [ "$next_action" = "discard" ]; then
+    decision_score="20"
+  fi
+  if [ "$worktree_now" = "dirty" ] && [ "$decision_score" -gt 80 ]; then
+    decision_score="80"
+  fi
+
   if [ "$worktree_now" = "clean" ]; then
     loop_safety="auto-keep-discard"
   else
@@ -194,6 +225,9 @@ print_status_kv() {
   printf 'loop_safety=%s\n' "$loop_safety"
   printf 'decision_recommend=%s\n' "$decision_recommend"
   printf 'decision_confidence=%s\n' "$decision_confidence"
+  printf 'next_action=%s\n' "$next_action"
+  printf 'action_reason=%s\n' "$action_reason"
+  printf 'decision_score=%s\n' "$decision_score"
   printf 'repo_plugin_count=%s\n' "$(plugin_js_count "plugins")"
   printf 'runtime_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_PLUGIN_DIR")"
   printf 'runtime_lang_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_LANG_PLUGIN_DIR")"

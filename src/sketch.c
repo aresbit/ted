@@ -236,6 +236,29 @@ static double stroke_gap_penalty(const sketch_point_t *pts, u32 n, double span) 
     return clamp01(gap);
 }
 
+static double stroke_cornerness(const sketch_point_t *pts, u32 n) {
+    if (n < 3) return 0.0;
+    double sum = 0.0;
+    u32 count = 0;
+    for (u32 i = 1; i + 1 < n; i++) {
+        double ax = pts[i].x - pts[i - 1].x;
+        double ay = pts[i].y - pts[i - 1].y;
+        double bx = pts[i + 1].x - pts[i].x;
+        double by = pts[i + 1].y - pts[i].y;
+        double la = sqrt(ax * ax + ay * ay);
+        double lb = sqrt(bx * bx + by * by);
+        if (la < 0.35 || lb < 0.35) continue;
+        double c = (ax * bx + ay * by) / (la * lb);
+        if (c > 1.0) c = 1.0;
+        if (c < -1.0) c = -1.0;
+        double turn = acos(c);
+        sum += turn;
+        count++;
+    }
+    if (count == 0) return 0.0;
+    return sum / (double)count;
+}
+
 static bool fit_line(const sketch_point_t *pts, u32 n, sketch_shape_t *out) {
     double mx, my, sxx, sxy, syy;
     compute_mean_cov(pts, n, &mx, &my, &sxx, &sxy, &syy);
@@ -440,6 +463,7 @@ static sketch_shape_t choose_best_fit(const sketch_point_t *pts, u32 n) {
     compute_mean_cov(pts, n, &mx, &my, &sxx, &sxy, &syy);
     double span = sqrt(fmax(1e-9, sxx + syy)) * 4.0;
     double gap = stroke_gap_penalty(pts, n, span);
+    double cornerness = stroke_cornerness(pts, n);
 
     sketch_shape_t cand[5];
     bool ok[5] = {
@@ -457,7 +481,26 @@ static sketch_shape_t choose_best_fit(const sketch_point_t *pts, u32 n) {
         double complexity_penalty = 0.0;
         if (cand[i].kind == SKETCH_SHAPE_RECT || cand[i].kind == SKETCH_SHAPE_ELLIPSE) complexity_penalty = 0.01;
         if (cand[i].kind == SKETCH_SHAPE_SQUARE || cand[i].kind == SKETCH_SHAPE_CIRCLE) complexity_penalty = 0.02;
-        cand[i].score = normalized + closure_penalty + complexity_penalty;
+
+        double shape_bias = 0.0;
+        bool is_rect = (cand[i].kind == SKETCH_SHAPE_RECT || cand[i].kind == SKETCH_SHAPE_SQUARE);
+        bool is_ellipse = (cand[i].kind == SKETCH_SHAPE_ELLIPSE || cand[i].kind == SKETCH_SHAPE_CIRCLE);
+        if (is_rect) {
+            if (cornerness > 0.55) {
+                shape_bias -= fmin(0.08, (cornerness - 0.55) * 0.12);
+            } else if (cornerness < 0.28) {
+                shape_bias += 0.03;
+            }
+        }
+        if (is_ellipse) {
+            if (cornerness > 0.55) {
+                shape_bias += fmin(0.10, (cornerness - 0.55) * 0.18);
+            } else if (cornerness < 0.30) {
+                shape_bias -= 0.02;
+            }
+        }
+
+        cand[i].score = normalized + closure_penalty + complexity_penalty + shape_bias;
         if (cand[i].score < best.score) best = cand[i];
     }
 
@@ -561,7 +604,16 @@ static void push_point(double x, double y) {
     if (G.stroke_count >= SKETCH_MAX_POINTS) return;
     if (G.stroke_count > 0) {
         sketch_point_t prev = G.stroke[G.stroke_count - 1];
-        if (fabs(prev.x - x) < 0.2 && fabs(prev.y - y) < 0.2) return;
+        double dx = x - prev.x;
+        double dy = y - prev.y;
+        double dist = sqrt(dx * dx + dy * dy);
+        if (dist < 0.05) return;
+        double step_dist = 0.45;
+        u32 steps = (u32)(dist / step_dist);
+        for (u32 s = 1; s <= steps && G.stroke_count < SKETCH_MAX_POINTS; s++) {
+            double t = (double)s / (double)(steps + 1);
+            G.stroke[G.stroke_count++] = (sketch_point_t){ prev.x + dx * t, prev.y + dy * t };
+        }
     }
     G.stroke[G.stroke_count++] = (sketch_point_t){ x, y };
 }
@@ -803,7 +855,7 @@ static double shape_distance(const sketch_shape_t *shape, double px, double py) 
 }
 
 static c8 glyph_for_distance(double d) {
-    if (d < 0.55) return '.';
+    if (d < 0.72) return '.';
     return ' ';
 }
 
@@ -835,15 +887,17 @@ void sketch_draw_canvas(sp_io_writer_t *out) {
                 }
             }
             if (G.stroke_active && G.stroke_count > 0) {
-                for (u32 i = 0; i < G.stroke_count; i++) {
-                    double d = point_dist((sketch_point_t){px, py}, G.stroke[i]);
+                if (G.stroke_count == 1) {
+                    double d = point_dist((sketch_point_t){px, py}, G.stroke[0]);
                     if (d < best) best = d;
-                    if (i == 0) continue;
-                    d = point_segment_distance(
-                        px, py,
-                        G.stroke[i - 1].x, G.stroke[i - 1].y,
-                        G.stroke[i].x, G.stroke[i].y);
-                    if (d < best) best = d;
+                } else {
+                    for (u32 i = 1; i < G.stroke_count; i++) {
+                        double d = point_segment_distance(
+                            px, py,
+                            G.stroke[i - 1].x, G.stroke[i - 1].y,
+                            G.stroke[i].x, G.stroke[i].y);
+                        if (d < best) best = d;
+                    }
                 }
             }
             c8 ch = (best < DBL_MAX / 2.0) ? glyph_for_distance(best) : grid_glyph(col, row);

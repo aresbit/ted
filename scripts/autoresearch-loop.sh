@@ -498,8 +498,10 @@ build_prompt() {
   repo_plugin_hint="$(status_kv_get "$status_kv_block" "repo_plugin_count" 2>/dev/null || printf "0")"
   runtime_plugin_hint="$(status_kv_get "$status_kv_block" "runtime_plugin_count" 2>/dev/null || printf "0")"
   loop_safety_hint="$(status_kv_get "$status_kv_block" "loop_safety" 2>/dev/null || printf "unavailable")"
-  decision_recommend_hint="$(status_kv_get "$status_kv_block" "decision_recommend" 2>/dev/null || printf "discard")"
   decision_confidence_hint="$(status_kv_get "$status_kv_block" "decision_confidence" 2>/dev/null || printf "low")"
+  next_action_hint="$(status_kv_get "$status_kv_block" "next_action" 2>/dev/null || printf "discard")"
+  action_reason_hint="$(status_kv_get "$status_kv_block" "action_reason" 2>/dev/null || printf "n/a")"
+  decision_score_hint="$(status_kv_get "$status_kv_block" "decision_score" 2>/dev/null || printf "20")"
   if printf '%s\n' "$status_block" | rg -q '^Autoresearch history:'; then
     history_block=""
   elif [ -z "$history_block" ]; then
@@ -581,6 +583,9 @@ Autoresearch loop hints:
 - loop safety (machine): $loop_safety_hint
 - decision recommend (machine): $decision_recommend_hint
 - decision confidence (machine): $decision_confidence_hint
+- next action (machine): $next_action_hint
+- action reason (machine): $action_reason_hint
+- decision score (machine): $decision_score_hint
 
 Autoresearch repo state:
 ${status_block}
