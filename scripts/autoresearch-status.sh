@@ -18,10 +18,13 @@ PRIORITY_SNAPSHOT_FILE="$RESULTS_DIR/priority.txt"
 MEMORY_SNAPSHOT_FILE="$RESULTS_DIR/memory.txt"
 BASELINE_OVERRIDE=""
 PRINT_KV=0
+GET_KEY=""
+RUNTIME_PLUGIN_DIR="${HOME:-}/.ted/plugins"
+RUNTIME_LANG_PLUGIN_DIR="$RUNTIME_PLUGIN_DIR/lang"
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/autoresearch-status.sh [--baseline VALUE] [--kv]
+Usage: scripts/autoresearch-status.sh [--baseline VALUE] [--kv] [--get KEY]
 USAGE
 }
 
@@ -35,6 +38,10 @@ while [ "$#" -gt 0 ]; do
       PRINT_KV=1
       shift
       ;;
+    --get)
+      GET_KEY="${2:-}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -46,6 +53,11 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+if [ "$PRINT_KV" -eq 1 ] && [ -n "$GET_KEY" ]; then
+  printf '%s\n' '--kv and --get are mutually exclusive' >&2
+  exit 1
+fi
 
 metric_value() {
   if [ -n "$BASELINE_OVERRIDE" ]; then
@@ -160,6 +172,47 @@ print_status_kv() {
   printf 'last_baseline=%s\n' "$last_baseline"
   printf 'last_metric=%s\n' "$last_metric"
   printf 'last_delta=%s\n' "$last_delta"
+  printf 'repo_plugin_count=%s\n' "$(plugin_js_count "plugins")"
+  printf 'runtime_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_PLUGIN_DIR")"
+  printf 'runtime_lang_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_LANG_PLUGIN_DIR")"
+}
+
+
+get_status_value() {
+  key="$1"
+  print_status_kv | awk -F '=' -v key="$key" '
+    $1 == key {
+      print substr($0, index($0, "=") + 1)
+      found = 1
+      exit
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  '
+}
+
+plugin_js_count() {
+  dir="$1"
+  if [ ! -d "$dir" ]; then
+    printf '%s\n' '0'
+    return
+  fi
+  find "$dir" -type f -name '*.js' | wc -l | tr -d ' '
+}
+
+plugin_inventory_block() {
+  repo_count="$(plugin_js_count "plugins")"
+  runtime_count="$(plugin_js_count "$RUNTIME_PLUGIN_DIR")"
+  runtime_lang_count="$(plugin_js_count "$RUNTIME_LANG_PLUGIN_DIR")"
+  cat <<EOF_PLUGINS
+Autoresearch plugin inventory:
+Repo plugins (.js): $repo_count
+Runtime plugins (.js): $runtime_count
+Runtime language plugins (.js): $runtime_lang_count
+EOF_PLUGINS
 }
 
 current_focus() {
@@ -297,6 +350,14 @@ if [ "$PRINT_KV" -eq 1 ]; then
   exit 0
 fi
 
+if [ -n "$GET_KEY" ]; then
+  if ! get_status_value "$GET_KEY"; then
+    printf 'unknown status key: %s\n' "$GET_KEY" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
 print_titled_block() {
   title="$1"
   block="$2"
@@ -340,6 +401,10 @@ fi
 memory="$(memory_block)"
 if [ -n "$memory" ]; then
   printf '%s\n' "$memory"
+fi
+plugins="$(plugin_inventory_block)"
+if [ -n "$plugins" ]; then
+  printf '%s\n' "$plugins"
 fi
 decision="$(decision_block)"
 print_titled_block 'Autoresearch decision:' "$decision"

@@ -65,6 +65,7 @@ add_if_rg 'Current focus recommendation|Previous loop outcome|NEXT_FOCUS_FILE|au
 add_if_file "scripts/autoresearch-status.sh" 5
 add_if_rg 'Autoresearch repo state|STATUS_SNAPSHOT_FILE|autoresearch-status\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'STATUS_KV_SNAPSHOT_FILE|write_status_kv|current_status_kv|Autoresearch machine state:' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'status_get|focus_key_hint|last_delta_hint|--get' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-next.sh" 5
 add_if_rg 'Next iteration brief|NEXT_BRIEF_FILE|autoresearch-next\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-module.sh" 5
@@ -91,6 +92,7 @@ add_if_rg 'baseline_hint|metric_hint|baseline \$baseline_hint -> \$metric_hint' 
 add_if_rg 'Autoresearch history:|Recent trend:|Last window:' "scripts/autoresearch-status.sh" 5
 add_if_rg 'BASELINE_OVERRIDE|last_decision_args|\$BASELINE_OVERRIDE	\$metric_now' "scripts/autoresearch-status.sh" 5
 add_if_rg 'PRINT_KV|--kv|print_status_kv|focus_key=|last_delta=' "scripts/autoresearch-status.sh" 5
+add_if_rg 'GET_KEY|--get|get_status_value|unknown status key' "scripts/autoresearch-status.sh" 5
 add_if_rg 'recent_metric_delta|Last metric delta' "scripts/autoresearch-next.sh" 5
 add_if_rg 'HISTORY_SNAPSHOT_FILE|autoresearch-history\.sh|current_history_summary' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Autoresearch doctor:|Health: worktree|Health: result notes|Warning:' "scripts/autoresearch-status.sh" 5
@@ -108,6 +110,7 @@ add_if_rg 'PRIORITY_SNAPSHOT_FILE|autoresearch-priority\.sh|current_priority_sum
 add_if_rg 'Autoresearch memory:|check_file status|check_file brief|check_file decision|check_file capabilities' "scripts/autoresearch-memory.sh" 5
 add_if_rg 'memory_block|autoresearch-memory\.sh' "scripts/autoresearch-status.sh" 5
 add_if_rg 'MEMORY_SNAPSHOT_FILE|autoresearch-memory\.sh|current_memory_summary' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'Autoresearch plugin inventory:|Repo plugins \\(\\.js\\):|Runtime plugins \\(\\.js\\):|runtime_plugin_count|runtime_lang_plugin_count' "scripts/autoresearch-status.sh" 5
 
 if [ -f "scripts/tui-beauty-metric.sh" ]; then
   beauty_score="$(sh scripts/tui-beauty-metric.sh 2>/dev/null || printf '0')"

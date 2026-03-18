@@ -115,6 +115,7 @@ make autoresearch-loop ARGS='--print-prompt'
 `make autoresearch-next` 会把最近几轮结果、guard 情况和当前 focus 合成为一份下一轮执行 brief，减少 loop 对人工判断“下一步做什么”的依赖。
 
 `make autoresearch-status` 会输出当前 metric、worktree 安全状态、上一轮结果和当前 focus recommendation，给本地 loop 一个可复用的状态快照。
+`scripts/autoresearch-status.sh --kv` 还会输出机器可读键值（含 repo/runtime plugin inventory），便于 loop 在无人工解析下做自动决策。
 
 它会：
 

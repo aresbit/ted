@@ -374,6 +374,16 @@ write_status_kv() {
   current_status_kv "$1" > "$STATUS_KV_SNAPSHOT_FILE"
 }
 
+status_get() {
+  baseline="$1"
+  key="$2"
+  if [ -x "scripts/autoresearch-status.sh" ] || [ -f "scripts/autoresearch-status.sh" ]; then
+    sh scripts/autoresearch-status.sh --baseline "$baseline" --get "$key"
+    return
+  fi
+  return 1
+}
+
 last_result_summary() {
   if [ ! -f "$RESULTS_FILE" ]; then
     printf '%s\n' 'Previous loop outcome: none yet.'
@@ -464,6 +474,8 @@ build_prompt() {
     status_kv_block="$(current_status_kv "$baseline")"
   fi
   machine_state_block="$(printf '%s\n' "$status_kv_block" | sed 's/^/- /')"
+  focus_key_hint="$(status_get "$baseline" "focus_key" 2>/dev/null || printf "autoresearch-automation")"
+  last_delta_hint="$(status_get "$baseline" "last_delta" 2>/dev/null || printf "0")"
   if printf '%s\n' "$status_block" | rg -q '^Autoresearch history:'; then
     history_block=""
   elif [ -z "$history_block" ]; then
@@ -536,6 +548,10 @@ $module_block
 Current priority:
 - Make TED more self-driving so a local loop script can keep improving it with minimal user input.
 - Prefer shipping productized capabilities over more planning text.
+
+Autoresearch loop hints:
+- focus_key (machine): $focus_key_hint
+- last_delta (machine): $last_delta_hint
 
 Autoresearch repo state:
 ${status_block}
