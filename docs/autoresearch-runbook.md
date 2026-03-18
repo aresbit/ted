@@ -116,6 +116,7 @@ make autoresearch-loop ARGS='--print-prompt'
 
 `make autoresearch-status` 会输出当前 metric、worktree 安全状态、上一轮结果和当前 focus recommendation，给本地 loop 一个可复用的状态快照。
 `scripts/autoresearch-status.sh --kv` 还会输出机器可读键值（含 repo/runtime plugin inventory），便于 loop 在无人工解析下做自动决策。
+loop 还会优先读取 `.autoresearch/status.kv` 做键值消费，再回退到 `--get`，减少状态解析开销。
 
 它会：
 

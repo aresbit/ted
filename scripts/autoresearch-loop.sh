@@ -384,6 +384,24 @@ status_get() {
   return 1
 }
 
+status_kv_get() {
+  block="$1"
+  key="$2"
+  printf '%s
+' "$block" | awk -F '=' -v key="$key" '
+    $1 == key {
+      print substr($0, index($0, "=") + 1)
+      found = 1
+      exit
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  '
+}
+
 last_result_summary() {
   if [ ! -f "$RESULTS_FILE" ]; then
     printf '%s\n' 'Previous loop outcome: none yet.'
@@ -474,8 +492,10 @@ build_prompt() {
     status_kv_block="$(current_status_kv "$baseline")"
   fi
   machine_state_block="$(printf '%s\n' "$status_kv_block" | sed 's/^/- /')"
-  focus_key_hint="$(status_get "$baseline" "focus_key" 2>/dev/null || printf "autoresearch-automation")"
-  last_delta_hint="$(status_get "$baseline" "last_delta" 2>/dev/null || printf "0")"
+  focus_key_hint="$(status_kv_get "$status_kv_block" "focus_key" 2>/dev/null || status_get "$baseline" "focus_key" 2>/dev/null || printf "autoresearch-automation")"
+  last_delta_hint="$(status_kv_get "$status_kv_block" "last_delta" 2>/dev/null || status_get "$baseline" "last_delta" 2>/dev/null || printf "0")"
+  repo_plugin_hint="$(status_kv_get "$status_kv_block" "repo_plugin_count" 2>/dev/null || printf "0")"
+  runtime_plugin_hint="$(status_kv_get "$status_kv_block" "runtime_plugin_count" 2>/dev/null || printf "0")"
   if printf '%s\n' "$status_block" | rg -q '^Autoresearch history:'; then
     history_block=""
   elif [ -z "$history_block" ]; then
@@ -552,6 +572,8 @@ Current priority:
 Autoresearch loop hints:
 - focus_key (machine): $focus_key_hint
 - last_delta (machine): $last_delta_hint
+- repo plugins (machine): $repo_plugin_hint
+- runtime plugins (machine): $runtime_plugin_hint
 
 Autoresearch repo state:
 ${status_block}

@@ -66,6 +66,7 @@ add_if_file "scripts/autoresearch-status.sh" 5
 add_if_rg 'Autoresearch repo state|STATUS_SNAPSHOT_FILE|autoresearch-status\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'STATUS_KV_SNAPSHOT_FILE|write_status_kv|current_status_kv|Autoresearch machine state:' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'status_get|focus_key_hint|last_delta_hint|--get' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'status_kv_get|repo_plugin_hint|runtime_plugin_hint|status_kv_block' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-next.sh" 5
 add_if_rg 'Next iteration brief|NEXT_BRIEF_FILE|autoresearch-next\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-module.sh" 5
