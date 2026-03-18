@@ -69,6 +69,7 @@ add_if_rg 'status_get|focus_key_hint|last_delta_hint|--get' "scripts/autoresearc
 add_if_rg 'decision_recommend_hint|decision_recommend \(machine\)|status_kv_get' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'status_kv_get|repo_plugin_hint|runtime_plugin_hint|status_kv_block' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'loop_safety_hint|decision_recommend_hint|loop safety \(machine\)|decision recommend \(machine\)' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'decision_confidence_hint|decision confidence \(machine\)' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-next.sh" 5
 add_if_rg 'Next iteration brief|NEXT_BRIEF_FILE|autoresearch-next\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-module.sh" 5
@@ -97,6 +98,7 @@ add_if_rg 'BASELINE_OVERRIDE|last_decision_args|\$BASELINE_OVERRIDE	\$metric_now
 add_if_rg 'PRINT_KV|--kv|print_status_kv|focus_key=|last_delta=' "scripts/autoresearch-status.sh" 5
 add_if_rg 'GET_KEY|--get|get_status_value|unknown status key' "scripts/autoresearch-status.sh" 5
 add_if_rg 'loop_safety=|decision_recommend=|observe-only|auto' "scripts/autoresearch-status.sh" 5
+add_if_rg 'decision_confidence=|medium|high|low' "scripts/autoresearch-status.sh" 5
 add_if_rg 'decision_recommend|last_guard|last_delta' "scripts/autoresearch-status.sh" 5
 add_if_rg 'recent_metric_delta|Last metric delta' "scripts/autoresearch-next.sh" 5
 add_if_rg 'HISTORY_SNAPSHOT_FILE|autoresearch-history\.sh|current_history_summary' "scripts/autoresearch-loop.sh" 5

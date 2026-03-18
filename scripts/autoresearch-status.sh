@@ -168,6 +168,13 @@ print_status_kv() {
     fi
   fi
 
+  decision_confidence="low"
+  if [ "$last_guard" = "pass" ] && [ "$last_delta" -ge 10 ]; then
+    decision_confidence="high"
+  elif [ "$last_guard" = "pass" ] && [ "$last_delta" -gt 0 ]; then
+    decision_confidence="medium"
+  fi
+
   if [ "$worktree_now" = "clean" ]; then
     loop_safety="auto-keep-discard"
   else
@@ -186,6 +193,7 @@ print_status_kv() {
   printf 'last_delta=%s\n' "$last_delta"
   printf 'loop_safety=%s\n' "$loop_safety"
   printf 'decision_recommend=%s\n' "$decision_recommend"
+  printf 'decision_confidence=%s\n' "$decision_confidence"
   printf 'repo_plugin_count=%s\n' "$(plugin_js_count "plugins")"
   printf 'runtime_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_PLUGIN_DIR")"
   printf 'runtime_lang_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_LANG_PLUGIN_DIR")"
