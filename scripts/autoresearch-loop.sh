@@ -16,6 +16,7 @@ LAST_OUTPUT_FILE="$RESULTS_DIR/last-output.txt"
 LAST_PROMPT_FILE="$RESULTS_DIR/last-prompt.txt"
 NEXT_FOCUS_FILE="$RESULTS_DIR/next-focus.txt"
 STATUS_SNAPSHOT_FILE="$RESULTS_DIR/status.txt"
+STATUS_KV_SNAPSHOT_FILE="$RESULTS_DIR/status.kv"
 NEXT_BRIEF_FILE="$RESULTS_DIR/next-brief.txt"
 MODULE_SUMMARY_FILE="$RESULTS_DIR/module.txt"
 HISTORY_SNAPSHOT_FILE="$RESULTS_DIR/history.txt"
@@ -355,6 +356,24 @@ write_status_snapshot() {
   current_status_snapshot "$1" > "$STATUS_SNAPSHOT_FILE"
 }
 
+current_status_kv() {
+  if [ -x "scripts/autoresearch-status.sh" ] || [ -f "scripts/autoresearch-status.sh" ]; then
+    sh scripts/autoresearch-status.sh --baseline "$1" --kv
+    return
+  fi
+
+  cat <<EOF
+metric=$1
+focus_key=autoresearch-automation
+last_status=unknown
+last_delta=0
+EOF
+}
+
+write_status_kv() {
+  current_status_kv "$1" > "$STATUS_KV_SNAPSHOT_FILE"
+}
+
 last_result_summary() {
   if [ ! -f "$RESULTS_FILE" ]; then
     printf '%s\n' 'Previous loop outcome: none yet.'
@@ -437,9 +456,14 @@ build_prompt() {
   capabilities_block="$(cat "$CAPABILITIES_SNAPSHOT_FILE" 2>/dev/null || true)"
   priority_block="$(cat "$PRIORITY_SNAPSHOT_FILE" 2>/dev/null || true)"
   memory_block="$(cat "$MEMORY_SNAPSHOT_FILE" 2>/dev/null || true)"
+  status_kv_block="$(cat "$STATUS_KV_SNAPSHOT_FILE" 2>/dev/null || true)"
   if [ -z "$status_block" ]; then
     status_block="$(current_status_snapshot "$baseline")"
   fi
+  if [ -z "$status_kv_block" ]; then
+    status_kv_block="$(current_status_kv "$baseline")"
+  fi
+  machine_state_block="$(printf '%s\n' "$status_kv_block" | sed 's/^/- /')"
   if printf '%s\n' "$status_block" | rg -q '^Autoresearch history:'; then
     history_block=""
   elif [ -z "$history_block" ]; then
@@ -514,7 +538,10 @@ Current priority:
 - Prefer shipping productized capabilities over more planning text.
 
 Autoresearch repo state:
-$status_block
+${status_block}
+
+Autoresearch machine state:
+${machine_state_block}
 
 $history_block
 
@@ -617,6 +644,7 @@ write_memory_summary
 write_decision_summary "$baseline_metric" "$baseline_metric" "pass"
 # Keep status snapshot last so it captures fresh summary snapshots.
 write_status_snapshot "$baseline_metric"
+write_status_kv "$baseline_metric"
 printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
 
 if [ "$PRINT_ONLY" -eq 1 ]; then
@@ -682,6 +710,7 @@ while [ "$i" -le "$ITERATIONS" ]; do
   write_decision_summary "$decision_baseline" "$decision_metric" "$guard_status"
   # Keep status snapshot last so it captures fresh summary snapshots.
   write_status_snapshot "$baseline_metric"
+  write_status_kv "$baseline_metric"
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))
 done

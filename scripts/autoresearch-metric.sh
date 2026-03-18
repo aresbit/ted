@@ -64,6 +64,7 @@ add_if_file "scripts/autoresearch-focus.sh" 5
 add_if_rg 'Current focus recommendation|Previous loop outcome|NEXT_FOCUS_FILE|autoresearch-focus\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-status.sh" 5
 add_if_rg 'Autoresearch repo state|STATUS_SNAPSHOT_FILE|autoresearch-status\.sh' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'STATUS_KV_SNAPSHOT_FILE|write_status_kv|current_status_kv|Autoresearch machine state:' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-next.sh" 5
 add_if_rg 'Next iteration brief|NEXT_BRIEF_FILE|autoresearch-next\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-module.sh" 5
@@ -89,6 +90,7 @@ add_if_rg 'Autoresearch history:|Autoresearch doctor:|Autoresearch rubric:|Autor
 add_if_rg 'baseline_hint|metric_hint|baseline \$baseline_hint -> \$metric_hint' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Autoresearch history:|Recent trend:|Last window:' "scripts/autoresearch-status.sh" 5
 add_if_rg 'BASELINE_OVERRIDE|last_decision_args|\$BASELINE_OVERRIDE	\$metric_now' "scripts/autoresearch-status.sh" 5
+add_if_rg 'PRINT_KV|--kv|print_status_kv|focus_key=|last_delta=' "scripts/autoresearch-status.sh" 5
 add_if_rg 'recent_metric_delta|Last metric delta' "scripts/autoresearch-next.sh" 5
 add_if_rg 'HISTORY_SNAPSHOT_FILE|autoresearch-history\.sh|current_history_summary' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Autoresearch doctor:|Health: worktree|Health: result notes|Warning:' "scripts/autoresearch-status.sh" 5

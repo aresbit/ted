@@ -17,11 +17,12 @@ CAPABILITIES_SNAPSHOT_FILE="$RESULTS_DIR/capabilities.txt"
 PRIORITY_SNAPSHOT_FILE="$RESULTS_DIR/priority.txt"
 MEMORY_SNAPSHOT_FILE="$RESULTS_DIR/memory.txt"
 BASELINE_OVERRIDE=""
+PRINT_KV=0
 
 usage() {
-  cat <<'EOF'
-Usage: scripts/autoresearch-status.sh [--baseline VALUE]
-EOF
+  cat <<'USAGE'
+Usage: scripts/autoresearch-status.sh [--baseline VALUE] [--kv]
+USAGE
 }
 
 while [ "$#" -gt 0 ]; do
@@ -29,6 +30,10 @@ while [ "$#" -gt 0 ]; do
     --baseline)
       BASELINE_OVERRIDE="${2:-}"
       shift 2
+      ;;
+    --kv)
+      PRINT_KV=1
+      shift
       ;;
     -h|--help)
       usage
@@ -112,17 +117,62 @@ last_result_summary() {
   ' "$RESULTS_FILE"
 }
 
+last_result_line() {
+  if [ ! -f "$RESULTS_FILE" ]; then
+    return 1
+  fi
+  awk -F '\t' 'NR > 1 { last = $0 } END { if (last != "") print last }' "$RESULTS_FILE"
+}
+
+focus_key() {
+  if [ -x "scripts/autoresearch-focus.sh" ] || [ -f "scripts/autoresearch-focus.sh" ]; then
+    sh scripts/autoresearch-focus.sh --key
+  else
+    printf '%s\n' 'autoresearch-automation'
+  fi
+}
+
+print_status_kv() {
+  last_line="$(last_result_line || true)"
+  if [ -z "$last_line" ]; then
+    last_iteration="0"
+    last_status="none"
+    last_guard="none"
+    last_metric="$metric_now"
+    last_baseline="$metric_now"
+    last_delta="0"
+  else
+    last_iteration="$(printf '%s\n' "$last_line" | awk -F '\t' '{ print $2 }')"
+    last_baseline="$(printf '%s\n' "$last_line" | awk -F '\t' '{ print $3 }')"
+    last_metric="$(printf '%s\n' "$last_line" | awk -F '\t' '{ print $4 }')"
+    last_status="$(printf '%s\n' "$last_line" | awk -F '\t' '{ print $5 }')"
+    last_guard="$(printf '%s\n' "$last_line" | awk -F '\t' '{ print $6 }')"
+    last_delta="$((last_metric - last_baseline))"
+  fi
+
+  printf 'metric=%s\n' "$metric_now"
+  printf 'best_metric=%s\n' "$best_metric"
+  printf 'worktree=%s\n' "$worktree_now"
+  printf 'focus_key=%s\n' "$(focus_key)"
+  printf 'last_iteration=%s\n' "$last_iteration"
+  printf 'last_status=%s\n' "$last_status"
+  printf 'last_guard=%s\n' "$last_guard"
+  printf 'last_baseline=%s\n' "$last_baseline"
+  printf 'last_metric=%s\n' "$last_metric"
+  printf 'last_delta=%s\n' "$last_delta"
+}
+
 current_focus() {
   if [ -s "$NEXT_FOCUS_FILE" ]; then
     cat "$NEXT_FOCUS_FILE"
   elif [ -x "scripts/autoresearch-focus.sh" ] || [ -f "scripts/autoresearch-focus.sh" ]; then
     sh scripts/autoresearch-focus.sh
   else
-    cat <<'EOF'
+    cat <<'EOF_FOCUS'
 Focus area: autoresearch automation
 Why now: no adaptive focus helper is available yet.
 Suggested move: ship a self-driving loop improvement rather than more planning text.
-EOF
+EOF_FOCUS
   fi
 }
 
@@ -226,13 +276,13 @@ decision_block() {
 
   if [ -x "scripts/autoresearch-decision.sh" ] || [ -f "scripts/autoresearch-decision.sh" ]; then
     decision_args="$(last_decision_args)"
-    decision_baseline="$(printf '%s
-' "$decision_args" | awk -F '	' '{ print $1 }')"
-    decision_metric="$(printf '%s
-' "$decision_args" | awk -F '	' '{ print $2 }')"
-    decision_guard="$(printf '%s
-' "$decision_args" | awk -F '	' '{ print $3 }')"
-    sh scripts/autoresearch-decision.sh       --baseline "$decision_baseline"       --metric "$decision_metric"       --guard "$decision_guard"
+    decision_baseline="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $1 }')"
+    decision_metric="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $2 }')"
+    decision_guard="$(printf '%s\n' "$decision_args" | awk -F '\t' '{ print $3 }')"
+    sh scripts/autoresearch-decision.sh \
+      --baseline "$decision_baseline" \
+      --metric "$decision_metric" \
+      --guard "$decision_guard"
   fi
 }
 
@@ -242,13 +292,18 @@ best_metric="$(best_recorded_metric)"
 last_result="$(last_result_summary)"
 focus_block="$(current_focus)"
 
+if [ "$PRINT_KV" -eq 1 ]; then
+  print_status_kv
+  exit 0
+fi
+
 print_titled_block() {
   title="$1"
   block="$2"
   if [ -z "$block" ]; then
     return
   fi
-  if printf '%s\n' "$block" | rg -q "^$title\$"; then
+  if printf '%s\n' "$block" | rg -q "^$title$"; then
     printf '%s\n' "$block"
   else
     printf '%s\n' "$title"
@@ -265,7 +320,7 @@ if [ "$worktree_now" = "clean" ]; then
 elif [ "$worktree_now" = "dirty" ]; then
   printf '%s\n' 'Loop safety: auto keep/discard is blocked unless you accept observe-only mode with --allow-dirty.'
 else
-printf '%s\n' 'Loop safety: git metadata unavailable.'
+  printf '%s\n' 'Loop safety: git metadata unavailable.'
 fi
 printf 'Last recorded outcome: %s\n' "$last_result"
 history="$(history_block)"
