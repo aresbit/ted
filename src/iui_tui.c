@@ -736,7 +736,8 @@ static void make_session_summary(c8 *buf, u32 cap) {
         snprintf(llm_buf, sizeof(llm_buf), "llm:off");
     }
 
-    snprintf(buf, cap, "%s %s %s th:%s", lang_buf, ts_buf, llm_buf, S.presets[S.active_theme].name);
+    snprintf(buf, cap, "%s %s %s th:%s ui:%s", lang_buf, ts_buf, llm_buf,
+             S.presets[S.active_theme].name, S.focused ? "on" : "off");
 }
 
 static void make_runtime_dock_message(c8 *buf, u32 cap) {
@@ -773,11 +774,6 @@ static void tui_toggle_syntax(void) {
         E.buffer.lines[i].hl_dirty = true;
     }
     editor_set_message("Syntax %s", E.config.syntax_enabled ? "enabled" : "disabled");
-}
-
-static void tui_toggle_focus(void) {
-    S.focused = !S.focused;
-    editor_set_message(S.focused ? "UI focus ON (Tab/Enter/Esc)" : "UI focus OFF");
 }
 
 static void tui_cycle_theme(void) {
@@ -957,7 +953,7 @@ static void tui_draw_header_row(iui_rect_t row_rect) {
 }
 
 static void tui_draw_controls_row(iui_rect_t row_rect) {
-    static const c8 *tab_labels[] = { "text", "gesture", "runtime" };
+    static const c8 *tab_labels[] = { "text", "sketch", "runtime" };
     bool sketch_clear_ready = sketch_is_enabled() ||
                               sketch_shape_count() > 0 ||
                               sketch_stroke_point_count() > 0;
@@ -966,11 +962,10 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
         tui_active_theme()->secondary_container,
         tui_active_theme()->tertiary_container,
         tui_active_theme()->secondary,
-        tui_active_theme()->outline,
     };
     iui_sizing_t sizes[] = {
         IUI_GROW(2), IUI_GROW(2), IUI_GROW(2),
-        IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1),
+        IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1),
     };
 
     tui_draw_row_band(row_rect,
@@ -979,7 +974,7 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
 
     iui_box_begin(S.ctx, &(iui_box_config_t){
         .direction = IUI_DIR_ROW,
-        .child_count = 8,
+        .child_count = 7,
         .sizes = sizes,
         .gap = 1.0f,
         .padding = IUI_PAD_XY(0.0f, 0.0f),
@@ -994,7 +989,7 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
         tui_draw_compact_chip(rect, tab_labels[i], active, tui_active_theme()->primary, true);
     }
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         iui_rect_t rect = iui_box_next(S.ctx);
         c8 label[24];
         bool active = false;
@@ -1002,11 +997,10 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
             switch (i) {
             case 0: tui_toggle_line_numbers(); break;
             case 1: tui_toggle_syntax(); break;
-            case 2: tui_toggle_focus(); break;
-            case 3:
+            case 2:
                 tui_cycle_theme();
                 break;
-            case 4:
+            case 3:
                 sketch_clear();
                 editor_set_message("Sketch canvas cleared");
                 break;
@@ -1023,14 +1017,10 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
             active = E.config.syntax_enabled;
             break;
         case 2:
-            snprintf(label, sizeof(label), "ui %s", S.focused ? "on" : "off");
-            active = S.focused;
-            break;
-        case 3:
             snprintf(label, sizeof(label), "theme %s", S.presets[S.active_theme].name);
             active = true;
             break;
-        case 4:
+        case 3:
             snprintf(label, sizeof(label), "clear");
             active = sketch_clear_ready;
             break;

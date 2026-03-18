@@ -34,14 +34,14 @@
 
 - `[nums on]` / `[syntax on]` / `[wrap off]`
   - 编辑器基础显示能力
-- `[focus on/off]`
-  - libiui 键盘焦点状态
-- `[text deck]` / `[shape lab]` / `[runtime]`
+- `[text]` / `[sketch]` / `[runtime]`
   - 工作台主区域切换
 - `[theme cyber|amber|mono]`
   - 主题切换动作必须可见、可点击、可命令化（`:theme`）
 - `[wipe canvas]`
   - 清空几何画布
+- `Ctrl+T`
+  - 切换 libiui 键盘焦点状态（不占顶部按钮位）
 - runtime dock action
   - 至少要提供一次“扫描或刷新插件坞”的显式动作
 
