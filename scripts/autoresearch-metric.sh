@@ -64,6 +64,7 @@ add_if_rg '^\.autoresearch/$|^tmp/$|^vendor/mquickjs/\*\.o$|^vendor/mquickjs/\*\
 add_if_file "scripts/autoresearch-focus.sh" 5
 add_if_rg 'Current focus recommendation|Previous loop outcome|NEXT_FOCUS_FILE|autoresearch-focus\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-status.sh" 5
+add_if_file "scripts/autoresearch-refresh.sh" 5
 add_if_rg 'Autoresearch repo state|STATUS_SNAPSHOT_FILE|autoresearch-status\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'STATUS_KV_SNAPSHOT_FILE|write_status_kv|current_status_kv|Autoresearch machine state:' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'status_get|focus_key_hint|last_delta_hint|--get' "scripts/autoresearch-loop.sh" 5
@@ -74,6 +75,8 @@ add_if_rg 'decision_confidence_hint|decision confidence \(machine\)' "scripts/au
 add_if_rg 'next_action_hint|next action \(machine\)' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'action_reason_hint|action reason \(machine\)' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'decision_score_hint|decision score \(machine\)' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'workflow_mode_hint|workflow_reason_hint|workflow_bias_hint|suggested workflow (machine)' "scripts/autoresearch-loop.sh" 5
+add_if_rg 'ACTIVE_WORKFLOW_FILE|set_active_workflow|resolve_active_workflow|active workflow \(machine\):' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-next.sh" 5
 add_if_rg 'Next iteration brief|NEXT_BRIEF_FILE|autoresearch-next\.sh' "scripts/autoresearch-loop.sh" 5
 add_if_file "scripts/autoresearch-module.sh" 5
@@ -100,14 +103,20 @@ add_if_rg 'baseline_hint|metric_hint|baseline \$baseline_hint -> \$metric_hint' 
 add_if_rg 'Autoresearch history:|Recent trend:|Last window:' "scripts/autoresearch-status.sh" 5
 add_if_rg 'BASELINE_OVERRIDE|last_decision_args|\$BASELINE_OVERRIDE	\$metric_now' "scripts/autoresearch-status.sh" 5
 add_if_rg 'PRINT_KV|--kv|print_status_kv|focus_key=|last_delta=' "scripts/autoresearch-status.sh" 5
+add_if_rg 'PRINT_JSON|--json|print_status_json|"metric":' "scripts/autoresearch-status.sh" 5
 add_if_rg 'GET_KEY|--get|get_status_value|unknown status key' "scripts/autoresearch-status.sh" 5
 add_if_rg 'loop_safety=|decision_recommend=|observe-only|auto' "scripts/autoresearch-status.sh" 5
 add_if_rg 'decision_confidence=|medium|high|low' "scripts/autoresearch-status.sh" 5
 add_if_rg 'next_action=|keep-review|discard|keep' "scripts/autoresearch-status.sh" 5
 add_if_rg 'action_reason=|dirty-worktree-observe-only|guard-pass-delta-ge-10|no-metric-gain-or-guard-fail' "scripts/autoresearch-status.sh" 5
 add_if_rg 'decision_score=|90|80|65|35|20' "scripts/autoresearch-status.sh" 5
+add_if_rg 'workflow_mode=|workflow_reason=|workflow_bias=|Suggested workflow mode:' "scripts/autoresearch-status.sh" 5
 add_if_rg 'decision_recommend|last_guard|last_delta' "scripts/autoresearch-status.sh" 5
 add_if_rg 'recent_metric_delta|Last metric delta' "scripts/autoresearch-next.sh" 5
+add_if_rg 'PRINT_KV|GET_KEY|print_brief_kv|get_status_value|--kv|--get' "scripts/autoresearch-next.sh" 5
+add_if_rg 'STATUS_SNAPSHOT_FILE|STATUS_KV_SNAPSHOT_FILE|NEXT_BRIEF_KV_SNAPSHOT_FILE|autoresearch-status\.sh|autoresearch-next\.sh' "scripts/autoresearch-refresh.sh" 5
+add_if_rg 'autoresearch-refresh|scripts/autoresearch-refresh\.sh' "Makefile" 5
+add_if_rg 'NEXT_BRIEF_KV_SNAPSHOT_FILE|write_next_brief_kv|next_brief_kv_block|next mode (machine)' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'HISTORY_SNAPSHOT_FILE|autoresearch-history\.sh|current_history_summary' "scripts/autoresearch-loop.sh" 5
 add_if_rg 'Autoresearch doctor:|Health: worktree|Health: result notes|Warning:' "scripts/autoresearch-status.sh" 5
 add_if_rg 'DOCTOR_SNAPSHOT_FILE|autoresearch-doctor\.sh|current_doctor_summary' "scripts/autoresearch-loop.sh" 5

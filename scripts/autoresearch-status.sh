@@ -18,13 +18,14 @@ PRIORITY_SNAPSHOT_FILE="$RESULTS_DIR/priority.txt"
 MEMORY_SNAPSHOT_FILE="$RESULTS_DIR/memory.txt"
 BASELINE_OVERRIDE=""
 PRINT_KV=0
+PRINT_JSON=0
 GET_KEY=""
 RUNTIME_PLUGIN_DIR="${HOME:-}/.ted/plugins"
 RUNTIME_LANG_PLUGIN_DIR="$RUNTIME_PLUGIN_DIR/lang"
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/autoresearch-status.sh [--baseline VALUE] [--kv] [--get KEY]
+Usage: scripts/autoresearch-status.sh [--baseline VALUE] [--kv] [--json] [--get KEY]
 USAGE
 }
 
@@ -36,6 +37,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --kv)
       PRINT_KV=1
+      shift
+      ;;
+    --json)
+      PRINT_JSON=1
       shift
       ;;
     --get)
@@ -56,6 +61,14 @@ done
 
 if [ "$PRINT_KV" -eq 1 ] && [ -n "$GET_KEY" ]; then
   printf '%s\n' '--kv and --get are mutually exclusive' >&2
+  exit 1
+fi
+if [ "$PRINT_JSON" -eq 1 ] && [ -n "$GET_KEY" ]; then
+  printf '%s\n' '--json and --get are mutually exclusive' >&2
+  exit 1
+fi
+if [ "$PRINT_JSON" -eq 1 ] && [ "$PRINT_KV" -eq 1 ]; then
+  printf '%s\n' '--json and --kv are mutually exclusive' >&2
   exit 1
 fi
 
@@ -212,6 +225,20 @@ print_status_kv() {
     loop_safety="observe-only"
   fi
 
+
+  workflow_mode="improve"
+  workflow_reason="guard-pass-or-stable"
+  workflow_bias="product-win"
+  if [ "$last_guard" = "fail" ]; then
+    workflow_mode="fix"
+    workflow_reason="last-guard-failed"
+    workflow_bias="stability-first"
+  elif [ "$last_status" = "discard" ] && [ "$last_delta" -le 0 ]; then
+    workflow_mode="debug"
+    workflow_reason="no-metric-gain-or-discard-repeat"
+    workflow_bias="angle-shift"
+  fi
+
   printf 'metric=%s\n' "$metric_now"
   printf 'best_metric=%s\n' "$best_metric"
   printf 'worktree=%s\n' "$worktree_now"
@@ -228,6 +255,9 @@ print_status_kv() {
   printf 'next_action=%s\n' "$next_action"
   printf 'action_reason=%s\n' "$action_reason"
   printf 'decision_score=%s\n' "$decision_score"
+  printf 'workflow_mode=%s\n' "$workflow_mode"
+  printf 'workflow_reason=%s\n' "$workflow_reason"
+  printf 'workflow_bias=%s\n' "$workflow_bias"
   printf 'repo_plugin_count=%s\n' "$(plugin_js_count "plugins")"
   printf 'runtime_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_PLUGIN_DIR")"
   printf 'runtime_lang_plugin_count=%s\n' "$(plugin_js_count "$RUNTIME_LANG_PLUGIN_DIR")"
@@ -246,6 +276,29 @@ get_status_value() {
       if (!found) {
         exit 1
       }
+    }
+  '
+}
+
+print_status_json() {
+  print_status_kv | awk -F '=' '
+    BEGIN {
+      printf "{\n"
+      first = 1
+    }
+    {
+      key = $1
+      value = substr($0, index($0, "=") + 1)
+      gsub(/\\/, "\\\\", value)
+      gsub(/"/, "\\\"", value)
+      if (!first) {
+        printf ",\n"
+      }
+      printf "  \"%s\": \"%s\"", key, value
+      first = 0
+    }
+    END {
+      printf "\n}\n"
     }
   '
 }
@@ -406,6 +459,11 @@ if [ "$PRINT_KV" -eq 1 ]; then
   exit 0
 fi
 
+
+if [ "$PRINT_JSON" -eq 1 ]; then
+  print_status_json
+  exit 0
+fi
 if [ -n "$GET_KEY" ]; then
   if ! get_status_value "$GET_KEY"; then
     printf 'unknown status key: %s\n' "$GET_KEY" >&2
@@ -440,6 +498,9 @@ else
   printf '%s\n' 'Loop safety: git metadata unavailable.'
 fi
 printf 'Last recorded outcome: %s\n' "$last_result"
+workflow_mode_now="$(get_status_value "workflow_mode" 2>/dev/null || printf 'improve')"
+workflow_reason_now="$(get_status_value "workflow_reason" 2>/dev/null || printf 'guard-pass-or-stable')"
+printf 'Suggested workflow mode: %s (%s)\n' "$workflow_mode_now" "$workflow_reason_now"
 history="$(history_block)"
 print_titled_block 'Autoresearch history:' "$history"
 doctor="$(doctor_block)"

@@ -219,6 +219,7 @@ sh scripts/install-plugins.sh
 ```
 
 安装后在编辑器里执行 `:plugins` 可重载并查看已加载插件。
+详细开发说明见 `docs/js-module-dev-guide.md`。
 
 ### 文本选择
 

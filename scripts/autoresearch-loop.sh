@@ -17,7 +17,9 @@ LAST_PROMPT_FILE="$RESULTS_DIR/last-prompt.txt"
 NEXT_FOCUS_FILE="$RESULTS_DIR/next-focus.txt"
 STATUS_SNAPSHOT_FILE="$RESULTS_DIR/status.txt"
 STATUS_KV_SNAPSHOT_FILE="$RESULTS_DIR/status.kv"
+STATUS_JSON_SNAPSHOT_FILE="$RESULTS_DIR/status.json"
 NEXT_BRIEF_FILE="$RESULTS_DIR/next-brief.txt"
+NEXT_BRIEF_KV_SNAPSHOT_FILE="$RESULTS_DIR/next-brief.kv"
 MODULE_SUMMARY_FILE="$RESULTS_DIR/module.txt"
 HISTORY_SNAPSHOT_FILE="$RESULTS_DIR/history.txt"
 DOCTOR_SNAPSHOT_FILE="$RESULTS_DIR/doctor.txt"
@@ -26,6 +28,8 @@ DECISION_SNAPSHOT_FILE="$RESULTS_DIR/decision.txt"
 CAPABILITIES_SNAPSHOT_FILE="$RESULTS_DIR/capabilities.txt"
 PRIORITY_SNAPSHOT_FILE="$RESULTS_DIR/priority.txt"
 MEMORY_SNAPSHOT_FILE="$RESULTS_DIR/memory.txt"
+ACTIVE_WORKFLOW_FILE="$RESULTS_DIR/active-workflow.txt"
+active_workflow="improve"
 
 usage() {
   cat <<'EOF'
@@ -160,7 +164,7 @@ write_current_focus() {
 
 current_module_summary() {
   if [ -x "scripts/autoresearch-module.sh" ] || [ -f "scripts/autoresearch-module.sh" ]; then
-    sh scripts/autoresearch-module.sh --summary
+    sh scripts/autoresearch-module.sh --summary --workflow "$active_workflow"
     return
   fi
 
@@ -174,7 +178,7 @@ EOF
 
 module_prompt_block() {
   if [ -x "scripts/autoresearch-module.sh" ] || [ -f "scripts/autoresearch-module.sh" ]; then
-    sh scripts/autoresearch-module.sh --prompt
+    sh scripts/autoresearch-module.sh --prompt --workflow "$active_workflow"
     return
   fi
 
@@ -337,6 +341,25 @@ write_next_brief() {
   current_next_brief > "$NEXT_BRIEF_FILE"
 }
 
+current_next_brief_kv() {
+  if [ -x "scripts/autoresearch-next.sh" ] || [ -f "scripts/autoresearch-next.sh" ]; then
+    sh scripts/autoresearch-next.sh --kv
+    return
+  fi
+
+  cat <<"EOF"
+mode=safe-advance
+focus_key=autoresearch-automation
+mode_reason=no next-iteration helper is available yet
+last_outcome=none yet
+last_metric_delta=0
+EOF
+}
+
+write_next_brief_kv() {
+  current_next_brief_kv > "$NEXT_BRIEF_KV_SNAPSHOT_FILE"
+}
+
 current_status_snapshot() {
   if [ -x "scripts/autoresearch-status.sh" ] || [ -f "scripts/autoresearch-status.sh" ]; then
     sh scripts/autoresearch-status.sh --baseline "$1"
@@ -374,6 +397,26 @@ write_status_kv() {
   current_status_kv "$1" > "$STATUS_KV_SNAPSHOT_FILE"
 }
 
+current_status_json() {
+  if [ -x "scripts/autoresearch-status.sh" ] || [ -f "scripts/autoresearch-status.sh" ]; then
+    sh scripts/autoresearch-status.sh --baseline "$1" --json
+    return
+  fi
+
+  cat <<EOF
+{
+  "metric": "$1",
+  "focus_key": "autoresearch-automation",
+  "last_status": "unknown",
+  "last_delta": "0"
+}
+EOF
+}
+
+write_status_json() {
+  current_status_json "$1" > "$STATUS_JSON_SNAPSHOT_FILE"
+}
+
 status_get() {
   baseline="$1"
   key="$2"
@@ -382,6 +425,28 @@ status_get() {
     return
   fi
   return 1
+}
+
+normalize_workflow() {
+  case "$1" in
+    improve|debug|fix|security|ship)
+      printf '%s\n' "$1"
+      ;;
+    *)
+      printf '%s\n' "improve"
+      ;;
+  esac
+}
+
+resolve_active_workflow() {
+  baseline="$1"
+  mode="$(status_get "$baseline" "workflow_mode" 2>/dev/null || printf 'improve')"
+  normalize_workflow "$mode"
+}
+
+set_active_workflow() {
+  active_workflow="$(normalize_workflow "$1")"
+  printf '%s\n' "$active_workflow" > "$ACTIVE_WORKFLOW_FILE"
 }
 
 status_kv_get() {
@@ -485,11 +550,19 @@ build_prompt() {
   priority_block="$(cat "$PRIORITY_SNAPSHOT_FILE" 2>/dev/null || true)"
   memory_block="$(cat "$MEMORY_SNAPSHOT_FILE" 2>/dev/null || true)"
   status_kv_block="$(cat "$STATUS_KV_SNAPSHOT_FILE" 2>/dev/null || true)"
+  status_json_block="$(cat "$STATUS_JSON_SNAPSHOT_FILE" 2>/dev/null || true)"
+  next_brief_kv_block="$(cat "$NEXT_BRIEF_KV_SNAPSHOT_FILE" 2>/dev/null || true)"
   if [ -z "$status_block" ]; then
     status_block="$(current_status_snapshot "$baseline")"
   fi
   if [ -z "$status_kv_block" ]; then
     status_kv_block="$(current_status_kv "$baseline")"
+  fi
+  if [ -z "$status_json_block" ]; then
+    status_json_block="$(current_status_json "$baseline")"
+  fi
+  if [ -z "$next_brief_kv_block" ]; then
+    next_brief_kv_block="$(current_next_brief_kv)"
   fi
   machine_state_block="$(printf '%s\n' "$status_kv_block" | sed 's/^/- /')"
   focus_key_hint="$(status_kv_get "$status_kv_block" "focus_key" 2>/dev/null || status_get "$baseline" "focus_key" 2>/dev/null || printf "autoresearch-automation")"
@@ -502,6 +575,13 @@ build_prompt() {
   next_action_hint="$(status_kv_get "$status_kv_block" "next_action" 2>/dev/null || printf "discard")"
   action_reason_hint="$(status_kv_get "$status_kv_block" "action_reason" 2>/dev/null || printf "n/a")"
   decision_score_hint="$(status_kv_get "$status_kv_block" "decision_score" 2>/dev/null || printf "20")"
+  workflow_mode_hint="$(status_kv_get "$status_kv_block" "workflow_mode" 2>/dev/null || printf "$active_workflow")"
+  workflow_reason_hint="$(status_kv_get "$status_kv_block" "workflow_reason" 2>/dev/null || printf "guard-pass-or-stable")"
+  workflow_bias_hint="$(status_kv_get "$status_kv_block" "workflow_bias" 2>/dev/null || printf "product-win")"
+  next_mode_hint="$(status_kv_get "$next_brief_kv_block" "mode" 2>/dev/null || printf "safe-advance")"
+  next_focus_hint="$(status_kv_get "$next_brief_kv_block" "focus_key" 2>/dev/null || printf "$focus_key_hint")"
+  next_mode_reason_hint="$(status_kv_get "$next_brief_kv_block" "mode_reason" 2>/dev/null || printf "stable-advance")"
+  next_metric_delta_hint="$(status_kv_get "$next_brief_kv_block" "last_metric_delta" 2>/dev/null || printf "0")"
   if printf '%s\n' "$status_block" | rg -q '^Autoresearch history:'; then
     history_block=""
   elif [ -z "$history_block" ]; then
@@ -586,11 +666,21 @@ Autoresearch loop hints:
 - next action (machine): $next_action_hint
 - action reason (machine): $action_reason_hint
 - decision score (machine): $decision_score_hint
+- suggested workflow (machine): $workflow_mode_hint
+- workflow reason (machine): $workflow_reason_hint
+- workflow bias (machine): $workflow_bias_hint
+- active workflow (machine): $active_workflow
+- next mode (machine): $next_mode_hint
+- next focus (machine): $next_focus_hint
+- next reason (machine): $next_mode_reason_hint
+- next delta (machine): $next_metric_delta_hint
 
 Autoresearch repo state:
 ${status_block}
 
 Autoresearch machine state:
+${status_json_block}
+
 ${machine_state_block}
 
 $history_block
@@ -682,8 +772,10 @@ discard_iteration() {
 }
 
 baseline_metric="$(metric_value)"
+set_active_workflow "$(resolve_active_workflow "$baseline_metric")"
 write_current_focus
 write_next_brief
+write_next_brief_kv
 write_module_summary
 write_history_summary
 write_doctor_summary
@@ -695,6 +787,7 @@ write_decision_summary "$baseline_metric" "$baseline_metric" "pass"
 # Keep status snapshot last so it captures fresh summary snapshots.
 write_status_snapshot "$baseline_metric"
 write_status_kv "$baseline_metric"
+write_status_json "$baseline_metric"
 printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
 
 if [ "$PRINT_ONLY" -eq 1 ]; then
@@ -749,7 +842,9 @@ while [ "$i" -le "$ITERATIONS" ]; do
   fi
 
   write_current_focus
+  set_active_workflow "$(resolve_active_workflow "$baseline_metric")"
   write_next_brief
+  write_next_brief_kv
   write_module_summary
   write_history_summary
   write_doctor_summary
@@ -761,6 +856,7 @@ while [ "$i" -le "$ITERATIONS" ]; do
   # Keep status snapshot last so it captures fresh summary snapshots.
   write_status_snapshot "$baseline_metric"
   write_status_kv "$baseline_metric"
+write_status_json "$baseline_metric"
   printf '%s\n' "$(build_prompt "$baseline_metric")" > "$LAST_PROMPT_FILE"
   i=$((i + 1))
 done

@@ -6,6 +6,41 @@ cd "$ROOT_DIR"
 
 RESULTS_DIR=".autoresearch"
 RESULTS_FILE="$RESULTS_DIR/results.tsv"
+PRINT_KV=0
+GET_KEY=""
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/autoresearch-next.sh [--kv] [--get KEY]
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --kv)
+      PRINT_KV=1
+      shift
+      ;;
+    --get)
+      GET_KEY="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'Unknown option: %s\n' "$1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$PRINT_KV" -eq 1 ] && [ -n "$GET_KEY" ]; then
+  printf '%s\n' '--kv and --get are mutually exclusive' >&2
+  exit 1
+fi
 
 focus_key() {
   sh scripts/autoresearch-focus.sh --key
@@ -185,5 +220,43 @@ print_brief() {
     printf '%s\n' '- repeating the same kind of change that just failed to raise the metric'
   fi
 }
+
+print_brief_kv() {
+  current_mode="$(mode_key)"
+  printf 'mode=%s\n' "$current_mode"
+  printf 'focus_key=%s\n' "$(focus_key)"
+  printf 'mode_reason=%s\n' "$(mode_reason)"
+  printf 'last_outcome=%s\n' "$(last_outcome)"
+  printf 'last_metric_delta=%s\n' "$(recent_metric_delta)"
+}
+
+get_status_value() {
+  key="$1"
+  print_brief_kv | awk -F '=' -v key="$key" '
+    $1 == key {
+      print substr($0, index($0, "=") + 1)
+      found = 1
+      exit
+    }
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  '
+}
+
+if [ "$PRINT_KV" -eq 1 ]; then
+  print_brief_kv
+  exit 0
+fi
+
+if [ -n "$GET_KEY" ]; then
+  if ! get_status_value "$GET_KEY"; then
+    printf 'unknown next key: %s\n' "$GET_KEY" >&2
+    exit 1
+  fi
+  exit 0
+fi
 
 print_brief
