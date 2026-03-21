@@ -35,6 +35,7 @@ typedef struct {
 } completion_cycle_t;
 
 static completion_cycle_t G_completion_cycle = {0};
+static bool G_pointer_primary_down = false;
 static const c8 *CMD_CANDIDATES[] = {
     "w", "write", "q", "quit", "wq", "q!", "goto", "g",
     "set", "syntax", "e", "edit", "e!", "edit!", "help", "h",
@@ -471,7 +472,7 @@ int input_read_key(void) {
                     i++;
                 }
 
-                bool is_press = seq[seq_len - 1] == 'M';
+                bool is_press_event = seq[seq_len - 1] == 'M';
                 bool is_wheel = (b & 64) != 0;
                 if (is_wheel) {
                     // SGR wheel: 64=up, 65=down
@@ -482,12 +483,41 @@ int input_read_key(void) {
                     }
                     return 0;
                 }
-                bool left_button = ((b & 0x3) == 0);
-                if (left_button && x > 0 && y > 0) {
-                    if (iui_tui_handle_mouse(x, y, is_press)) {
+                if (x == 0 || y == 0) return 0;
+
+                u32 button_id = (b & 0x3);
+                bool motion = (b & 32) != 0;
+                bool left_button = (button_id == 0);
+                bool no_button = (button_id == 3);
+                bool is_release_event = (seq[seq_len - 1] == 'm') || (!motion && no_button);
+                bool is_drag_event = is_press_event && motion && (left_button || (no_button && G_pointer_primary_down));
+                bool should_emit_press = false;
+                bool should_emit_release = false;
+
+                if (left_button && is_press_event && !motion) {
+                    G_pointer_primary_down = true;
+                    should_emit_press = true;
+                } else if (is_drag_event) {
+                    if (!G_pointer_primary_down) {
+                        // Some mobile terminals start touch with motion only; synthesize down.
+                        G_pointer_primary_down = true;
+                        should_emit_press = true;
+                    } else {
+                        should_emit_press = true;
+                    }
+                } else if (is_release_event) {
+                    if (G_pointer_primary_down) {
+                        should_emit_release = true;
+                    }
+                    G_pointer_primary_down = false;
+                }
+
+                if (should_emit_press || should_emit_release) {
+                    bool pressed = should_emit_press && !should_emit_release;
+                    if (iui_tui_handle_mouse(x, y, pressed)) {
                         return 0;
                     }
-                    if (sketch_handle_mouse(x, y, is_press)) {
+                    if (sketch_handle_mouse(x, y, pressed)) {
                         return 0;
                     }
                 }

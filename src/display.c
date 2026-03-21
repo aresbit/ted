@@ -111,6 +111,7 @@ static void cleanup_terminal(void) {
     if (G_stdin_is_tty) {
         sp_io_write_cstr(&out, ESC "?1000l");
         sp_io_write_cstr(&out, ESC "?1002l");
+        sp_io_write_cstr(&out, ESC "?1003l");
         sp_io_write_cstr(&out, ESC "?1006l");
     }
     sp_io_write_cstr(&out, ESC "?25h"); // Show cursor
@@ -190,9 +191,11 @@ void display_init(void) {
         }
         G_raw_mode_enabled = true;
 
-        // Enable drag-aware mouse reporting (press/release + button motion + SGR coords)
+        // Enable pointer reporting for desktop mouse + mobile touch forwarding:
+        // 1000: press/release, 1002: button-motion drag, 1003: any-motion, 1006: SGR coords
         sp_io_write_cstr(&stdout_writer, ESC "?1000h");
         sp_io_write_cstr(&stdout_writer, ESC "?1002h");
+        sp_io_write_cstr(&stdout_writer, ESC "?1003h");
         sp_io_write_cstr(&stdout_writer, ESC "?1006h");
     }
 
