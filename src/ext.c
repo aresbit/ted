@@ -608,6 +608,11 @@ static JSValue js_load(JSContext *ctx, JSValue *this_val, int argc, JSValue *arg
         return JS_ThrowOutOfMemory(ctx);
     }
     size_t n = fread(buf, 1, (size_t)sz, f);
+    if (n != (size_t)sz || ferror(f)) {
+        free(buf);
+        fclose(f);
+        return JS_ThrowTypeError(ctx, "load: failed to read file");
+    }
     fclose(f);
     buf[n] = '\0';
 

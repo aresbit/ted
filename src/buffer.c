@@ -236,17 +236,31 @@ void buffer_load_file(buffer_t *buf, sp_str_t filename) {
     }
 }
 
-void buffer_save_file(buffer_t *buf) {
+bool buffer_save_file(buffer_t *buf) {
+    if (!buf) return false;
     sp_io_writer_t writer = sp_io_writer_from_file(buf->filename, SP_IO_WRITE_MODE_OVERWRITE);
+    sp_err_clear();
 
     for (u32 i = 0; i < buf->line_count; i++) {
-        sp_io_write_str(&writer, buf->lines[i].text);
-        sp_io_write_cstr(&writer, "\n");
+        if (sp_io_write_str(&writer, buf->lines[i].text) != buf->lines[i].text.len) {
+            sp_io_writer_close(&writer);
+            return false;
+        }
+        if (sp_io_write_cstr(&writer, "\n") != 1) {
+            sp_io_writer_close(&writer);
+            return false;
+        }
     }
 
-    sp_io_flush(&writer);
+    if (sp_io_flush(&writer) != SP_ERR_OK) {
+        sp_io_writer_close(&writer);
+        return false;
+    }
     sp_io_writer_close(&writer);
+    if (sp_err_get() != SP_ERR_OK) {
+        return false;
+    }
 
     buf->modified = false;
-    editor_set_message("Saved file");
+    return true;
 }

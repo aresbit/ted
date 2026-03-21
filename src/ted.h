@@ -91,6 +91,7 @@ typedef struct {
     action_type_t type;
     u32 row;
     u32 col;
+    c8 ch;
     sp_str_t text;
     sp_str_t old_text;
 } action_t;
@@ -220,7 +221,7 @@ void editor_set_message(const c8 *fmt, ...);
 void buffer_init(buffer_t *buf);
 void buffer_free(buffer_t *buf);
 void buffer_load_file(buffer_t *buf, sp_str_t filename);
-void buffer_save_file(buffer_t *buf);
+bool buffer_save_file(buffer_t *buf);
 void buffer_insert_line(buffer_t *buf, u32 at, sp_str_t text);
 void buffer_delete_line(buffer_t *buf, u32 at);
 void buffer_insert_char_at(buffer_t *buf, u32 row, u32 col, c8 c);

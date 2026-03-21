@@ -76,7 +76,10 @@ bool editor_save(void) {
         return false;
     }
 
-    buffer_save_file(&E.buffer);
+    if (!buffer_save_file(&E.buffer)) {
+        editor_set_message("Save failed");
+        return false;
+    }
     editor_set_message("Saved %u lines", E.buffer.line_count);
     return true;
 }

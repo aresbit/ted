@@ -76,12 +76,12 @@ void undo_clear(undo_stack_t *stack) {
 }
 
 void undo_record_insert(u32 row, u32 col, c8 c) {
-    c8 buf[2] = {c, '\0'};
     action_t action = {
         .type = ACTION_INSERT,
         .row = row,
         .col = col,
-        .text = sp_str(buf, 1),
+        .ch = c,
+        .text = sp_str_lit(""),
         .old_text = sp_str_lit("")
     };
     undo_push(&E.undo, &action);
@@ -89,12 +89,12 @@ void undo_record_insert(u32 row, u32 col, c8 c) {
 }
 
 void undo_record_delete(u32 row, u32 col, c8 c) {
-    c8 buf[2] = {c, '\0'};
     action_t action = {
         .type = ACTION_DELETE,
         .row = row,
         .col = col,
-        .text = sp_str(buf, 1),
+        .ch = c,
+        .text = sp_str_lit(""),
         .old_text = sp_str_lit("")
     };
     undo_push(&E.undo, &action);
@@ -106,6 +106,7 @@ void undo_record_insert_line(u32 row, sp_str_t text) {
         .type = ACTION_INSERT_LINE,
         .row = row,
         .col = 0,
+        .ch = '\0',
         .text = sp_str_copy(text),
         .old_text = sp_str_lit("")
     };
@@ -118,6 +119,7 @@ void undo_record_delete_line(u32 row, sp_str_t text) {
         .type = ACTION_DELETE_LINE,
         .row = row,
         .col = 0,
+        .ch = '\0',
         .text = sp_str_copy(text),
         .old_text = sp_str_lit("")
     };
@@ -146,7 +148,7 @@ void undo_perform(void) {
         }
         case ACTION_DELETE: {
             // Undo delete = insert the char back
-            c8 c = action->text.len > 0 ? action->text.data[0] : ' ';
+            c8 c = action->ch;
             buffer_insert_char_at(&E.buffer, action->row, action->col, c);
             E.cursor.row = action->row;
             E.cursor.col = action->col + 1;
@@ -194,7 +196,7 @@ void redo_perform(void) {
     switch (action->type) {
         case ACTION_INSERT: {
             // Redo insert = insert the char
-            buffer_insert_char_at(&E.buffer, action->row, action->col, action->text.data[0]);
+            buffer_insert_char_at(&E.buffer, action->row, action->col, action->ch);
             E.cursor.row = action->row;
             E.cursor.col = action->col + 1;
             undo_action.type = ACTION_DELETE;
