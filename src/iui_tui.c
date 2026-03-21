@@ -11,6 +11,13 @@
 
 #define IUI_TUI_CELL_W 8.0f
 #define IUI_TUI_CELL_H 16.0f
+#define TUI_SLOT_GAP 2.0f
+#define TUI_ROW_PAD_X 8.0f
+#define TUI_TEXT_PAD_X 3.0f
+#define TUI_SEG_LABEL_MIN_CH 4.0f
+#define TUI_SEG_LABEL_MAX_RATIO 0.38f
+#define TUI_ROW_HEIGHT 16.0f
+#define TUI_ACTION_SLOT_W (14.0f * IUI_TUI_CELL_W)
 
 typedef struct {
     c8 ch;
@@ -336,6 +343,25 @@ static s32 tui_theme_index(sp_str_t name) {
     return -1;
 }
 
+static float tui_seg_label_width(float total_width) {
+    float min_w = TUI_SEG_LABEL_MIN_CH * IUI_TUI_CELL_W;
+    float max_w = total_width * TUI_SEG_LABEL_MAX_RATIO;
+    if (max_w < min_w) return max_w;
+    return min_w;
+}
+
+static u32 tui_panel_fill_lowest(void) {
+    return tui_active_theme()->surface_container_lowest;
+}
+
+static u32 tui_panel_fill_low(void) {
+    return tui_active_theme()->surface_container_low;
+}
+
+static u32 tui_panel_fill_high(void) {
+    return tui_active_theme()->surface_container_high;
+}
+
 static void tui_recompute_defaults(void) {
     const iui_theme_t *t = tui_active_theme();
     S.default_fg = srgb_to_ansi256(t->on_surface);
@@ -349,78 +375,78 @@ static void tui_presets_init(void) {
     // large MD3 color fields, which quantize poorly in ANSI 256-color mode.
     S.presets[0].name = "cyber";
     S.presets[0].theme = *dark;
-    S.presets[0].theme.primary = 0xFF4FE3FF;
-    S.presets[0].theme.on_primary = 0xFF061217;
-    S.presets[0].theme.primary_container = 0xFF123847;
-    S.presets[0].theme.on_primary_container = 0xFFD9F7FF;
-    S.presets[0].theme.secondary = 0xFFFFC857;
-    S.presets[0].theme.on_secondary = 0xFF0B1116;
-    S.presets[0].theme.secondary_container = 0xFF4A3510;
-    S.presets[0].theme.on_secondary_container = 0xFFFFF0C7;
-    S.presets[0].theme.tertiary = 0xFF7DFFA1;
-    S.presets[0].theme.on_tertiary = 0xFF0C120D;
-    S.presets[0].theme.tertiary_container = 0xFF193820;
-    S.presets[0].theme.on_tertiary_container = 0xFFD8F6DE;
-    S.presets[0].theme.surface = 0xFF101114;
-    S.presets[0].theme.on_surface = 0xFFE7EDF2;
-    S.presets[0].theme.surface_variant = 0xFF1B1E24;
-    S.presets[0].theme.on_surface_variant = 0xFFC6D1DA;
-    S.presets[0].theme.surface_container_lowest = 0xFF0C0D10;
-    S.presets[0].theme.surface_container_low = 0xFF161920;
-    S.presets[0].theme.surface_container = 0xFF1D2129;
-    S.presets[0].theme.surface_container_high = 0xFF262C36;
-    S.presets[0].theme.surface_container_highest = 0xFF303845;
-    S.presets[0].theme.outline = 0xFF5DC6E4;
-    S.presets[0].theme.outline_variant = 0xFF4A5B69;
+    S.presets[0].theme.primary = 0xFF7BA2F7;
+    S.presets[0].theme.on_primary = 0xFF0C1729;
+    S.presets[0].theme.primary_container = 0xFF223B61;
+    S.presets[0].theme.on_primary_container = 0xFFDDE7FF;
+    S.presets[0].theme.secondary = 0xFFAAB9CC;
+    S.presets[0].theme.on_secondary = 0xFF141B25;
+    S.presets[0].theme.secondary_container = 0xFF2A3442;
+    S.presets[0].theme.on_secondary_container = 0xFFDCE3ED;
+    S.presets[0].theme.tertiary = 0xFF95C8BA;
+    S.presets[0].theme.on_tertiary = 0xFF0F1917;
+    S.presets[0].theme.tertiary_container = 0xFF29423C;
+    S.presets[0].theme.on_tertiary_container = 0xFFDCEDE8;
+    S.presets[0].theme.surface = 0xFF121418;
+    S.presets[0].theme.on_surface = 0xFFE7EBF0;
+    S.presets[0].theme.surface_variant = 0xFF1A1E24;
+    S.presets[0].theme.on_surface_variant = 0xFFBFC7D2;
+    S.presets[0].theme.surface_container_lowest = 0xFF0C0E12;
+    S.presets[0].theme.surface_container_low = 0xFF151920;
+    S.presets[0].theme.surface_container = 0xFF1D232C;
+    S.presets[0].theme.surface_container_high = 0xFF262D38;
+    S.presets[0].theme.surface_container_highest = 0xFF303949;
+    S.presets[0].theme.outline = 0xFF6B7C95;
+    S.presets[0].theme.outline_variant = 0xFF424C5D;
     S.presets[0].theme.shadow = 0xFF000000;
     S.presets[0].theme.scrim = 0xAA02040A;
-    S.presets[0].theme.inverse_surface = 0xFFE6F8FF;
-    S.presets[0].theme.inverse_on_surface = 0xFF0B1118;
-    S.presets[0].theme.inverse_primary = 0xFF006B7A;
+    S.presets[0].theme.inverse_surface = 0xFFE9EDF4;
+    S.presets[0].theme.inverse_on_surface = 0xFF151B24;
+    S.presets[0].theme.inverse_primary = 0xFF3B5E99;
 
     S.presets[1] = S.presets[0];
     S.presets[1].name = "amber";
-    S.presets[1].theme.primary = 0xFFFFD166;
-    S.presets[1].theme.on_primary = 0xFF151008;
-    S.presets[1].theme.primary_container = 0xFF4F3A11;
-    S.presets[1].theme.on_primary_container = 0xFFFFF0CB;
-    S.presets[1].theme.secondary = 0xFFFF9E7A;
-    S.presets[1].theme.secondary_container = 0xFF533122;
-    S.presets[1].theme.tertiary = 0xFFFFEFC1;
-    S.presets[1].theme.tertiary_container = 0xFF3B3421;
-    S.presets[1].theme.surface = 0xFF15120E;
-    S.presets[1].theme.on_surface = 0xFFF5E8D3;
-    S.presets[1].theme.surface_variant = 0xFF221C14;
-    S.presets[1].theme.on_surface_variant = 0xFFE6D7BE;
-    S.presets[1].theme.surface_container_lowest = 0xFF0E0B08;
-    S.presets[1].theme.surface_container_low = 0xFF1B1711;
-    S.presets[1].theme.surface_container = 0xFF231E16;
-    S.presets[1].theme.surface_container_high = 0xFF2D261D;
-    S.presets[1].theme.surface_container_highest = 0xFF382F24;
-    S.presets[1].theme.outline = 0xFFE3A64A;
-    S.presets[1].theme.outline_variant = 0xFF7F6640;
+    S.presets[1].theme.primary = 0xFFE6B86A;
+    S.presets[1].theme.on_primary = 0xFF22180B;
+    S.presets[1].theme.primary_container = 0xFF4A3720;
+    S.presets[1].theme.on_primary_container = 0xFFF6E6C9;
+    S.presets[1].theme.secondary = 0xFFCFAD8E;
+    S.presets[1].theme.secondary_container = 0xFF423327;
+    S.presets[1].theme.tertiary = 0xFFF0D9A8;
+    S.presets[1].theme.tertiary_container = 0xFF4C4028;
+    S.presets[1].theme.surface = 0xFF14110D;
+    S.presets[1].theme.on_surface = 0xFFF1E7D8;
+    S.presets[1].theme.surface_variant = 0xFF201A13;
+    S.presets[1].theme.on_surface_variant = 0xFFD8CAB3;
+    S.presets[1].theme.surface_container_lowest = 0xFF0D0A07;
+    S.presets[1].theme.surface_container_low = 0xFF17130E;
+    S.presets[1].theme.surface_container = 0xFF211B14;
+    S.presets[1].theme.surface_container_high = 0xFF2C241B;
+    S.presets[1].theme.surface_container_highest = 0xFF392E22;
+    S.presets[1].theme.outline = 0xFF9E8058;
+    S.presets[1].theme.outline_variant = 0xFF60503A;
 
     S.presets[2] = S.presets[0];
     S.presets[2].name = "mono";
-    S.presets[2].theme.primary = 0xFFD1D4D9;
-    S.presets[2].theme.on_primary = 0xFF101215;
-    S.presets[2].theme.primary_container = 0xFF343A43;
-    S.presets[2].theme.on_primary_container = 0xFFE8EDF2;
-    S.presets[2].theme.secondary = 0xFFAEB5BF;
-    S.presets[2].theme.secondary_container = 0xFF30353C;
-    S.presets[2].theme.tertiary = 0xFFCCD0D6;
-    S.presets[2].theme.tertiary_container = 0xFF3A3E45;
-    S.presets[2].theme.surface = 0xFF0F1114;
-    S.presets[2].theme.on_surface = 0xFFE2E5EA;
-    S.presets[2].theme.surface_variant = 0xFF191C21;
-    S.presets[2].theme.on_surface_variant = 0xFFC4CAD3;
-    S.presets[2].theme.surface_container_lowest = 0xFF090B0E;
-    S.presets[2].theme.surface_container_low = 0xFF12161A;
-    S.presets[2].theme.surface_container = 0xFF1A1F25;
-    S.presets[2].theme.surface_container_high = 0xFF232A33;
-    S.presets[2].theme.surface_container_highest = 0xFF2E3744;
-    S.presets[2].theme.outline = 0xFF9BA5B4;
-    S.presets[2].theme.outline_variant = 0xFF596273;
+    S.presets[2].theme.primary = 0xFFC4CCD7;
+    S.presets[2].theme.on_primary = 0xFF141820;
+    S.presets[2].theme.primary_container = 0xFF353E4B;
+    S.presets[2].theme.on_primary_container = 0xFFE5EAF1;
+    S.presets[2].theme.secondary = 0xFFABB4C0;
+    S.presets[2].theme.secondary_container = 0xFF323945;
+    S.presets[2].theme.tertiary = 0xFFB9C1CD;
+    S.presets[2].theme.tertiary_container = 0xFF38404D;
+    S.presets[2].theme.surface = 0xFF101317;
+    S.presets[2].theme.on_surface = 0xFFE2E6EC;
+    S.presets[2].theme.surface_variant = 0xFF191D23;
+    S.presets[2].theme.on_surface_variant = 0xFFC1C8D3;
+    S.presets[2].theme.surface_container_lowest = 0xFF0A0D10;
+    S.presets[2].theme.surface_container_low = 0xFF141920;
+    S.presets[2].theme.surface_container = 0xFF1D232C;
+    S.presets[2].theme.surface_container_high = 0xFF262E3A;
+    S.presets[2].theme.surface_container_highest = 0xFF323C4A;
+    S.presets[2].theme.outline = 0xFF7E8899;
+    S.presets[2].theme.outline_variant = 0xFF4B5565;
     S.active_theme = 0;
     tui_recompute_defaults();
 }
@@ -838,21 +864,26 @@ static void tui_draw_text_fit(iui_rect_t rect, float x_pad, u32 color, const c8 
 
 static void tui_draw_compact_chip(iui_rect_t rect, const c8 *label, bool active, u32 accent, bool clickable) {
     const iui_theme_t *t = tui_active_theme();
-    u32 bg = active ? accent : t->surface_container_lowest;
-    u32 fg = active ? t->surface_container_lowest : t->on_surface;
+    u32 bg = active ? accent : tui_panel_fill_lowest();
+    u32 fg = active ? t->on_primary : t->on_surface;
     u32 line = active ? accent : t->outline_variant;
     if (clickable && tui_mouse_submit(rect)) {
-        bg = t->surface_container_high;
+        bg = tui_panel_fill_high();
         line = t->primary;
         fg = t->on_surface;
     }
     S.renderer.draw_box(rect, 0.0f, bg, S.renderer.user);
+    S.renderer.draw_line(rect.x, rect.y, rect.x, rect.y + rect.height,
+                         1.0f, line, S.renderer.user);
     S.renderer.draw_line(rect.x, rect.y, rect.x + rect.width, rect.y,
-                         1.0f, active ? accent : t->outline_variant, S.renderer.user);
+                         1.0f, line, S.renderer.user);
+    S.renderer.draw_line(rect.x + rect.width - 1.0f, rect.y,
+                         rect.x + rect.width - 1.0f, rect.y + rect.height,
+                         1.0f, line, S.renderer.user);
     S.renderer.draw_line(rect.x, rect.y + rect.height - 1.0f,
                          rect.x + rect.width, rect.y + rect.height - 1.0f,
                          1.0f, line, S.renderer.user);
-    tui_draw_text_fit(rect, 2.0f, fg, label);
+    tui_draw_text_fit(rect, TUI_TEXT_PAD_X, fg, label);
 }
 
 static void tui_draw_compact_segment(iui_rect_t rect, const c8 *label, const c8 *value, u32 accent) {
@@ -860,19 +891,24 @@ static void tui_draw_compact_segment(iui_rect_t rect, const c8 *label, const c8 
     iui_rect_t label_rect = rect;
     iui_rect_t value_rect = rect;
 
-    S.renderer.draw_box(rect, 0.0f, t->surface_container_lowest, S.renderer.user);
+    S.renderer.draw_box(rect, 0.0f, tui_panel_fill_lowest(), S.renderer.user);
     S.renderer.draw_line(rect.x, rect.y, rect.x + rect.width, rect.y, 1.0f, accent, S.renderer.user);
+    S.renderer.draw_line(rect.x, rect.y, rect.x, rect.y + rect.height,
+                         1.0f, t->outline_variant, S.renderer.user);
+    S.renderer.draw_line(rect.x + rect.width - 1.0f, rect.y,
+                         rect.x + rect.width - 1.0f, rect.y + rect.height,
+                         1.0f, t->outline_variant, S.renderer.user);
     S.renderer.draw_line(rect.x, rect.y + rect.height - 1.0f,
                          rect.x + rect.width, rect.y + rect.height - 1.0f,
                          1.0f, t->outline_variant, S.renderer.user);
 
-    label_rect.x += 2.0f;
-    label_rect.width = 8.0f * 6.0f;
-    value_rect.x += 2.0f + label_rect.width;
-    value_rect.width -= 2.0f + label_rect.width;
+    label_rect.x += TUI_TEXT_PAD_X;
+    label_rect.width = tui_seg_label_width(rect.width);
+    value_rect.x += TUI_TEXT_PAD_X + label_rect.width;
+    value_rect.width -= TUI_TEXT_PAD_X + label_rect.width;
 
     tui_draw_text_fit(label_rect, 0.0f, t->on_surface_variant, label);
-    tui_draw_text_fit(value_rect, 2.0f, t->on_surface, value);
+    tui_draw_text_fit(value_rect, TUI_TEXT_PAD_X, t->on_surface, value);
 }
 
 static void tui_draw_row_band(iui_rect_t rect, u32 fill, u32 line) {
@@ -880,6 +916,16 @@ static void tui_draw_row_band(iui_rect_t rect, u32 fill, u32 line) {
     S.renderer.draw_line(rect.x, rect.y + rect.height - 1.0f,
                          rect.x + rect.width, rect.y + rect.height - 1.0f,
                          1.0f, line, S.renderer.user);
+}
+
+static void tui_draw_toolbar_frame(float width, float height) {
+    const iui_theme_t *t = tui_active_theme();
+    S.renderer.draw_line(0.0f, 0.0f, width, 0.0f, 1.0f, t->outline_variant, S.renderer.user);
+    S.renderer.draw_line(0.0f, 0.0f, 0.0f, height, 1.0f, t->outline_variant, S.renderer.user);
+    S.renderer.draw_line(width - 1.0f, 0.0f, width - 1.0f, height,
+                         1.0f, t->outline_variant, S.renderer.user);
+    S.renderer.draw_line(0.0f, height - 1.0f, width, height - 1.0f,
+                         1.0f, t->outline, S.renderer.user);
 }
 
 static void tui_select_runtime_tab(int tab) {
@@ -925,7 +971,7 @@ static void tui_draw_header_row(iui_rect_t row_rect) {
     iui_sizing_t sizes[] = { IUI_FIXED(18), IUI_FIXED(14), IUI_GROW(4), IUI_GROW(2) };
 
     tui_draw_row_band(row_rect,
-                      tui_active_theme()->surface_container_lowest,
+                      tui_panel_fill_lowest(),
                       tui_active_theme()->outline_variant);
     copy_sp_str_to_cstr(filename, file_buf, sizeof(file_buf), "[No Name]");
     make_deck_summary(deck_buf, sizeof(deck_buf));
@@ -935,8 +981,8 @@ static void tui_draw_header_row(iui_rect_t row_rect) {
         .direction = IUI_DIR_ROW,
         .child_count = 4,
         .sizes = sizes,
-        .gap = 1.0f,
-        .padding = IUI_PAD_XY(0.0f, 0.0f),
+        .gap = TUI_SLOT_GAP,
+        .padding = IUI_PAD_XY(TUI_ROW_PAD_X, 0.0f),
         .cross = row_rect.height,
         .align = IUI_CROSS_STRETCH,
     });
@@ -964,20 +1010,21 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
         tui_active_theme()->secondary,
     };
     iui_sizing_t sizes[] = {
-        IUI_GROW(2), IUI_GROW(2), IUI_GROW(2),
-        IUI_GROW(1), IUI_GROW(1), IUI_GROW(1), IUI_GROW(1),
+        IUI_GROW(3), IUI_GROW(3), IUI_GROW(3),
+        IUI_FIXED(TUI_ACTION_SLOT_W), IUI_FIXED(TUI_ACTION_SLOT_W),
+        IUI_FIXED(TUI_ACTION_SLOT_W), IUI_FIXED(TUI_ACTION_SLOT_W),
     };
 
     tui_draw_row_band(row_rect,
-                      tui_active_theme()->surface_container_low,
+                      tui_panel_fill_low(),
                       tui_active_theme()->outline_variant);
 
     iui_box_begin(S.ctx, &(iui_box_config_t){
         .direction = IUI_DIR_ROW,
         .child_count = 7,
         .sizes = sizes,
-        .gap = 1.0f,
-        .padding = IUI_PAD_XY(0.0f, 0.0f),
+        .gap = TUI_SLOT_GAP,
+        .padding = IUI_PAD_XY(TUI_ROW_PAD_X, 0.0f),
         .cross = row_rect.height,
         .align = IUI_CROSS_STRETCH,
     });
@@ -1009,19 +1056,19 @@ static void tui_draw_controls_row(iui_rect_t row_rect) {
         }
         switch (i) {
         case 0:
-            snprintf(label, sizeof(label), "num %s", E.config.show_line_numbers ? "on" : "off");
+            snprintf(label, sizeof(label), "numbers %s", E.config.show_line_numbers ? "on" : "off");
             active = E.config.show_line_numbers;
             break;
         case 1:
-            snprintf(label, sizeof(label), "syn %s", E.config.syntax_enabled ? "on" : "off");
+            snprintf(label, sizeof(label), "syntax %s", E.config.syntax_enabled ? "on" : "off");
             active = E.config.syntax_enabled;
             break;
         case 2:
-            snprintf(label, sizeof(label), "theme %s", S.presets[S.active_theme].name);
+            snprintf(label, sizeof(label), "theme:%s", S.presets[S.active_theme].name);
             active = true;
             break;
         case 3:
-            snprintf(label, sizeof(label), "clear");
+            snprintf(label, sizeof(label), "wipe");
             active = sketch_clear_ready;
             break;
         default:
@@ -1043,7 +1090,7 @@ static void tui_draw_status_row(iui_rect_t row_rect) {
     u32 stroke_pts = sketch_stroke_point_count();
 
     tui_draw_row_band(row_rect,
-                      tui_active_theme()->surface_container_high,
+                      tui_panel_fill_high(),
                       tui_active_theme()->outline);
 
     if (sketch_is_enabled()) {
@@ -1074,8 +1121,8 @@ static void tui_draw_status_row(iui_rect_t row_rect) {
         .direction = IUI_DIR_ROW,
         .child_count = 4,
         .sizes = sizes,
-        .gap = 1.0f,
-        .padding = IUI_PAD_XY(0.0f, 0.0f),
+        .gap = TUI_SLOT_GAP,
+        .padding = IUI_PAD_XY(TUI_ROW_PAD_X, 0.0f),
         .cross = row_rect.height,
         .align = IUI_CROSS_STRETCH,
     });
@@ -1100,7 +1147,7 @@ static void tui_draw_runtime_dock_row(iui_rect_t row_rect) {
     iui_sizing_t sizes[] = { IUI_GROW(2), IUI_GROW(2), IUI_GROW(2), IUI_GROW(1) };
 
     tui_draw_row_band(row_rect,
-                      tui_active_theme()->surface_container_high,
+                      tui_panel_fill_high(),
                       tui_active_theme()->outline);
     make_runtime_list_summary(plugins, ext_loaded_plugin_count(), "none", plugins_buf, sizeof(plugins_buf));
     make_runtime_list_summary(recognizers, ext_recognizer_count(), "none", recognizers_buf, sizeof(recognizers_buf));
@@ -1111,8 +1158,8 @@ static void tui_draw_runtime_dock_row(iui_rect_t row_rect) {
         .direction = IUI_DIR_ROW,
         .child_count = 4,
         .sizes = sizes,
-        .gap = 1.0f,
-        .padding = IUI_PAD_XY(0.0f, 0.0f),
+        .gap = TUI_SLOT_GAP,
+        .padding = IUI_PAD_XY(TUI_ROW_PAD_X, 0.0f),
         .cross = row_rect.height,
         .align = IUI_CROSS_STRETCH,
     });
@@ -1138,7 +1185,7 @@ void iui_tui_draw_toolbar(void) {
     iui_apply_mouse_state();
     iui_begin_frame(S.ctx, S.frame_dt > 0.0f ? S.frame_dt : (1.0f / 60.0f));
     if (iui_begin_window(S.ctx, "", 0.0f, 0.0f, (float)S.pixel_w, (float)S.pixel_h, IUI_WINDOW_PINNED)) {
-        iui_sizing_t rows[] = { IUI_FIXED(16), IUI_FIXED(16), IUI_FIXED(16) };
+        iui_sizing_t rows[] = { IUI_FIXED(TUI_ROW_HEIGHT), IUI_FIXED(TUI_ROW_HEIGHT), IUI_FIXED(TUI_ROW_HEIGHT) };
         iui_box_begin(S.ctx, &(iui_box_config_t){
             .direction = IUI_DIR_COLUMN,
             .child_count = 3,
@@ -1156,6 +1203,7 @@ void iui_tui_draw_toolbar(void) {
             tui_draw_status_row(iui_box_next(S.ctx));
         }
         iui_box_end(S.ctx);
+        tui_draw_toolbar_frame((float)S.pixel_w, TUI_ROW_HEIGHT * 3.0f);
         iui_end_window(S.ctx);
     }
     iui_end_frame(S.ctx);
