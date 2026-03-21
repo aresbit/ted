@@ -259,6 +259,26 @@ static double stroke_cornerness(const sketch_point_t *pts, u32 n) {
     return sum / (double)count;
 }
 
+static u32 stroke_corner_count(const sketch_point_t *pts, u32 n, double min_turn_rad) {
+    if (n < 3) return 0;
+    u32 corners = 0;
+    for (u32 i = 1; i + 1 < n; i++) {
+        double ax = pts[i].x - pts[i - 1].x;
+        double ay = pts[i].y - pts[i - 1].y;
+        double bx = pts[i + 1].x - pts[i].x;
+        double by = pts[i + 1].y - pts[i].y;
+        double la = sqrt(ax * ax + ay * ay);
+        double lb = sqrt(bx * bx + by * by);
+        if (la < 0.35 || lb < 0.35) continue;
+        double c = (ax * bx + ay * by) / (la * lb);
+        if (c > 1.0) c = 1.0;
+        if (c < -1.0) c = -1.0;
+        double turn = acos(c);
+        if (turn >= min_turn_rad) corners++;
+    }
+    return corners;
+}
+
 static bool fit_line(const sketch_point_t *pts, u32 n, sketch_shape_t *out) {
     double mx, my, sxx, sxy, syy;
     compute_mean_cov(pts, n, &mx, &my, &sxx, &sxy, &syy);
@@ -464,6 +484,7 @@ static sketch_shape_t choose_best_fit(const sketch_point_t *pts, u32 n) {
     double span = sqrt(fmax(1e-9, sxx + syy)) * 4.0;
     double gap = stroke_gap_penalty(pts, n, span);
     double cornerness = stroke_cornerness(pts, n);
+    u32 corner_count = stroke_corner_count(pts, n, 0.90);
 
     sketch_shape_t cand[5];
     bool ok[5] = {
@@ -491,6 +512,9 @@ static sketch_shape_t choose_best_fit(const sketch_point_t *pts, u32 n) {
             } else if (cornerness < 0.28) {
                 shape_bias += 0.03;
             }
+            if (gap < 0.55 && corner_count >= 3) {
+                shape_bias -= 0.08;
+            }
         }
         if (is_ellipse) {
             if (cornerness > 0.55) {
@@ -498,6 +522,12 @@ static sketch_shape_t choose_best_fit(const sketch_point_t *pts, u32 n) {
             } else if (cornerness < 0.30) {
                 shape_bias -= 0.02;
             }
+            if (corner_count >= 3) {
+                shape_bias += 0.07;
+            }
+        }
+        if (cand[i].kind == SKETCH_SHAPE_LINE && corner_count >= 2) {
+            shape_bias += 0.06;
         }
 
         cand[i].score = normalized + closure_penalty + complexity_penalty + shape_bias;
@@ -836,7 +866,11 @@ static double ellipse_distance(const sketch_shape_t *shape, double px, double py
     double q = (u * u) / fmax(shape->rx * shape->rx, 1e-6) +
                (v * v) / fmax(shape->ry * shape->ry, 1e-6);
     double scale = 0.5 * (shape->rx + shape->ry);
-    return fabs(q - 1.0) * scale;
+    if (q <= 1.0) {
+        /* Fill inside ellipses/circles for denser terminal rendering */
+        return 0.0;
+    }
+    return (sqrt(q) - 1.0) * scale;
 }
 
 static double shape_distance(const sketch_shape_t *shape, double px, double py) {
@@ -855,7 +889,7 @@ static double shape_distance(const sketch_shape_t *shape, double px, double py) 
 }
 
 static c8 glyph_for_distance(double d) {
-    if (d < 0.72) return '.';
+    if (d < 1.15) return '.';
     return ' ';
 }
 
