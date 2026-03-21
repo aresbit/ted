@@ -390,6 +390,58 @@ static void input_scroll_view(s32 delta_lines) {
     }
 }
 
+static bool input_dispatch_pointer(u32 b, u32 x, u32 y, bool is_press_event, bool has_explicit_release) {
+    bool is_wheel = (b & 64) != 0;
+    if (is_wheel) {
+        // Wheel: up/down encoded in bit0 for both SGR and X10-like packets.
+        if ((b & 1) == 0) {
+            input_scroll_view(-3);
+        } else {
+            input_scroll_view(3);
+        }
+        return true;
+    }
+    if (x == 0 || y == 0) return true;
+
+    u32 button_id = (b & 0x3);
+    bool motion = (b & 32) != 0;
+    bool left_button = (button_id == 0);
+    bool no_button = (button_id == 3);
+    bool is_release_event = has_explicit_release || (!motion && no_button);
+    bool is_drag_event = is_press_event && motion && (left_button || (no_button && G_pointer_primary_down));
+    bool should_emit_press = false;
+    bool should_emit_release = false;
+
+    if (left_button && is_press_event && !motion) {
+        G_pointer_primary_down = true;
+        should_emit_press = true;
+    } else if (is_drag_event) {
+        if (!G_pointer_primary_down) {
+            // Some mobile terminals start touch with motion only; synthesize down.
+            G_pointer_primary_down = true;
+            should_emit_press = true;
+        } else {
+            should_emit_press = true;
+        }
+    } else if (is_release_event) {
+        if (G_pointer_primary_down) {
+            should_emit_release = true;
+        }
+        G_pointer_primary_down = false;
+    }
+
+    if (should_emit_press || should_emit_release) {
+        bool pressed = should_emit_press && !should_emit_release;
+        if (iui_tui_handle_mouse(x, y, pressed)) {
+            return true;
+        }
+        if (sketch_handle_mouse(x, y, pressed)) {
+            return true;
+        }
+    }
+    return true;
+}
+
 int input_read_key(void) {
     int c = 0;
     ssize_t nread;
@@ -423,6 +475,28 @@ int input_read_key(void) {
         seq_len = 1;
 
         if (seq[0] == '[') {
+            // Parse classic X10 mouse packet: ESC [ M cb cx cy
+            // Some terminal/touch stacks still use this even when SGR is requested.
+            if (!input_available()) {
+                usleep(1000);
+            }
+            c8 probe = 0;
+            if (input_available() && read(STDIN_FILENO, &probe, 1) == 1) {
+                if (probe == 'M') {
+                    c8 pkt[3];
+                    if (read(STDIN_FILENO, pkt, 3) == 3) {
+                        u32 b = (u32)(((unsigned char)pkt[0]) > 31 ? ((unsigned char)pkt[0]) - 32 : 0);
+                        u32 x = (u32)(((unsigned char)pkt[1]) > 31 ? ((unsigned char)pkt[1]) - 32 : 0);
+                        u32 y = (u32)(((unsigned char)pkt[2]) > 31 ? ((unsigned char)pkt[2]) - 32 : 0);
+                        (void)input_dispatch_pointer(b, x, y, true, false);
+                        return 0;
+                    }
+                    return 0;
+                }
+                seq[1] = probe;
+                seq_len = 2;
+            }
+
             // Read the rest of the sequence until we get a command character
             while (seq_len < sizeof(seq) - 1) {
                 if (!input_available()) {
@@ -473,54 +547,8 @@ int input_read_key(void) {
                 }
 
                 bool is_press_event = seq[seq_len - 1] == 'M';
-                bool is_wheel = (b & 64) != 0;
-                if (is_wheel) {
-                    // SGR wheel: 64=up, 65=down
-                    if ((b & 1) == 0) {
-                        input_scroll_view(-3);
-                    } else {
-                        input_scroll_view(3);
-                    }
-                    return 0;
-                }
-                if (x == 0 || y == 0) return 0;
-
-                u32 button_id = (b & 0x3);
-                bool motion = (b & 32) != 0;
-                bool left_button = (button_id == 0);
-                bool no_button = (button_id == 3);
-                bool is_release_event = (seq[seq_len - 1] == 'm') || (!motion && no_button);
-                bool is_drag_event = is_press_event && motion && (left_button || (no_button && G_pointer_primary_down));
-                bool should_emit_press = false;
-                bool should_emit_release = false;
-
-                if (left_button && is_press_event && !motion) {
-                    G_pointer_primary_down = true;
-                    should_emit_press = true;
-                } else if (is_drag_event) {
-                    if (!G_pointer_primary_down) {
-                        // Some mobile terminals start touch with motion only; synthesize down.
-                        G_pointer_primary_down = true;
-                        should_emit_press = true;
-                    } else {
-                        should_emit_press = true;
-                    }
-                } else if (is_release_event) {
-                    if (G_pointer_primary_down) {
-                        should_emit_release = true;
-                    }
-                    G_pointer_primary_down = false;
-                }
-
-                if (should_emit_press || should_emit_release) {
-                    bool pressed = should_emit_press && !should_emit_release;
-                    if (iui_tui_handle_mouse(x, y, pressed)) {
-                        return 0;
-                    }
-                    if (sketch_handle_mouse(x, y, pressed)) {
-                        return 0;
-                    }
-                }
+                bool has_explicit_release = seq[seq_len - 1] == 'm';
+                (void)input_dispatch_pointer(b, x, y, is_press_event, has_explicit_release);
                 return 0;
             }
 
