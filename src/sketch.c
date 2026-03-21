@@ -279,6 +279,66 @@ static u32 stroke_corner_count(const sketch_point_t *pts, u32 n, double min_turn
     return corners;
 }
 
+static u32 count_bits_u32(u32 mask) {
+    u32 count = 0;
+    while (mask) {
+        count += mask & 1u;
+        mask >>= 1;
+    }
+    return count;
+}
+
+static u32 rect_side_coverage_mask(const sketch_point_t *pts, u32 n,
+                                   double cx, double cy, double angle,
+                                   double hx, double hy) {
+    double c = cos(angle);
+    double s = sin(angle);
+    double edge_tol = fmax(0.55, 0.18 * fmin(hx, hy));
+    u32 mask = 0;
+
+    for (u32 i = 0; i < n; i++) {
+        double dx = pts[i].x - cx;
+        double dy = pts[i].y - cy;
+        double u = c * dx + s * dy;
+        double v = -s * dx + c * dy;
+
+        if (fabs(fabs(u) - hx) <= edge_tol && fabs(v) <= hy + edge_tol) {
+            mask |= (u < 0.0) ? 1u : 2u;
+        }
+        if (fabs(fabs(v) - hy) <= edge_tol && fabs(u) <= hx + edge_tol) {
+            mask |= (v < 0.0) ? 4u : 8u;
+        }
+    }
+
+    return mask;
+}
+
+static u32 ellipse_angle_coverage_mask(const sketch_point_t *pts, u32 n,
+                                       double cx, double cy, double angle,
+                                       double rx, double ry, u32 bucket_count) {
+    if (bucket_count == 0) return 0;
+    double c = cos(angle);
+    double s = sin(angle);
+    u32 mask = 0;
+    double inv_rx = 1.0 / fmax(rx, 1e-6);
+    double inv_ry = 1.0 / fmax(ry, 1e-6);
+
+    for (u32 i = 0; i < n; i++) {
+        double dx = pts[i].x - cx;
+        double dy = pts[i].y - cy;
+        double u = (c * dx + s * dy) * inv_rx;
+        double v = (-s * dx + c * dy) * inv_ry;
+        double theta = atan2(v, u);
+        double normalized = (theta + M_PI) / (2.0 * M_PI);
+        if (normalized >= 1.0) normalized = 0.999999;
+        if (normalized < 0.0) normalized = 0.0;
+        u32 bucket = (u32)(normalized * (double)bucket_count);
+        if (bucket < 32) mask |= (1u << bucket);
+    }
+
+    return mask;
+}
+
 static bool fit_line(const sketch_point_t *pts, u32 n, sketch_shape_t *out) {
     double mx, my, sxx, sxy, syy;
     compute_mean_cov(pts, n, &mx, &my, &sxx, &sxy, &syy);
@@ -507,6 +567,13 @@ static sketch_shape_t choose_best_fit(const sketch_point_t *pts, u32 n) {
         bool is_rect = (cand[i].kind == SKETCH_SHAPE_RECT || cand[i].kind == SKETCH_SHAPE_SQUARE);
         bool is_ellipse = (cand[i].kind == SKETCH_SHAPE_ELLIPSE || cand[i].kind == SKETCH_SHAPE_CIRCLE);
         if (is_rect) {
+            u32 side_mask = rect_side_coverage_mask(pts, n, cand[i].cx, cand[i].cy, cand[i].angle, cand[i].rx, cand[i].ry);
+            u32 side_hits = count_bits_u32(side_mask);
+            if (side_hits < 4) {
+                shape_bias += 0.04 * (double)(4 - side_hits);
+            } else {
+                shape_bias -= 0.015;
+            }
             if (cornerness > 0.55) {
                 shape_bias -= fmin(0.08, (cornerness - 0.55) * 0.12);
             } else if (cornerness < 0.28) {
@@ -517,6 +584,13 @@ static sketch_shape_t choose_best_fit(const sketch_point_t *pts, u32 n) {
             }
         }
         if (is_ellipse) {
+            u32 angle_mask = ellipse_angle_coverage_mask(pts, n, cand[i].cx, cand[i].cy, cand[i].angle, cand[i].rx, cand[i].ry, 8);
+            u32 angle_hits = count_bits_u32(angle_mask);
+            if (angle_hits < 6) {
+                shape_bias += 0.03 * (double)(6 - angle_hits);
+            } else {
+                shape_bias -= 0.01;
+            }
             if (cornerness > 0.55) {
                 shape_bias += fmin(0.10, (cornerness - 0.55) * 0.18);
             } else if (cornerness < 0.30) {
@@ -851,9 +925,15 @@ static double oriented_box_distance(const sketch_shape_t *shape, double px, doub
     double dy = py - shape->cy;
     double u = c * dx + s * dy;
     double v = -s * dx + c * dy;
-    double du = fabs(fabs(u) - shape->rx);
-    double dv = fabs(fabs(v) - shape->ry);
-    return du < dv ? du : dv;
+    double left = point_segment_distance(u, v, -shape->rx, -shape->ry, -shape->rx, shape->ry);
+    double right = point_segment_distance(u, v, shape->rx, -shape->ry, shape->rx, shape->ry);
+    double top = point_segment_distance(u, v, -shape->rx, -shape->ry, shape->rx, -shape->ry);
+    double bottom = point_segment_distance(u, v, -shape->rx, shape->ry, shape->rx, shape->ry);
+    double best = left;
+    if (right < best) best = right;
+    if (top < best) best = top;
+    if (bottom < best) best = bottom;
+    return best;
 }
 
 static double ellipse_distance(const sketch_shape_t *shape, double px, double py) {
@@ -866,11 +946,7 @@ static double ellipse_distance(const sketch_shape_t *shape, double px, double py
     double q = (u * u) / fmax(shape->rx * shape->rx, 1e-6) +
                (v * v) / fmax(shape->ry * shape->ry, 1e-6);
     double scale = 0.5 * (shape->rx + shape->ry);
-    if (q <= 1.0) {
-        /* Fill inside ellipses/circles for denser terminal rendering */
-        return 0.0;
-    }
-    return (sqrt(q) - 1.0) * scale;
+    return fabs(sqrt(fmax(q, 0.0)) - 1.0) * scale;
 }
 
 static double shape_distance(const sketch_shape_t *shape, double px, double py) {
@@ -889,7 +965,7 @@ static double shape_distance(const sketch_shape_t *shape, double px, double py) 
 }
 
 static c8 glyph_for_distance(double d) {
-    if (d < 1.15) return '.';
+    if (d < 0.72) return '.';
     return ' ';
 }
 
